@@ -1,0 +1,678 @@
+---
+title: "vas_livingstandards_rdhs"
+author: "Kevin Tang"
+date: "9/17/2021"
+output: html_document
+---
+
+
+```{r}
+library(rdhs)
+library(demogsurv)
+library(data.table)
+library(haven)
+library(rminer)
+pacman::p_load(rio,tidyverse,survey,srvyr,gtsummary,plyr)
+options(stringsAsFactors = TRUE)
+```
+
+Download the DHS data
+```{r}
+## set up your credentials
+set_rdhs_config(email = "kevin.tang1@student.lshtm.ac.uk",
+                password_prompt =  TRUE,
+                project = "Micronutrient Action Policy Support Tool", # Put your project name here
+                config_path = "rdhs.json",
+                global=FALSE)
+
+# we will give our permission here so that we don't have to provide a prompt within the README.
+Sys.setenv("rdhs_RENVIRON_PERMISSION"=1)
+
+## a little nugget to return API requests as data.table rather than data.frame.
+Sys.setenv(rdhs_DATA_TABLE = "TRUE")
+
+## Identify all DHS surveys for the following countries
+countries <- dhs_countries()
+cc <- c( "ET","MW","CM","BJ","CF","ML","NP","PK","BU","BD","GM","GN","HT","LB","NG","PG","PH","SN","SL","TJ","TZ","TL","UG","ZM","ZW","ZA")
+cc <- c("BF","MD","NI","AF","KH","TD","CG","CD","CI","GH","BO","KM","SZ","KE","LS","MZ","MM","RW","ST","TG","YE","NM", "GA","GU","HN","ID","KY")
+cc <- c("GA")
+  
+# Use rdhs to retreive datasets, downloading them from DHS website if not already in the rdhs cache.
+surveys <- dhs_surveys(countryIds = cc, surveyYearStart=2010, surveyType = "DHS")
+
+# Identify births recode (BR) datasets corresponding to these surveys.
+step <- dhs_datasets(fileType = "IR", fileFormat = "flat")
+ird <- step[which(step$SurveyId %in% surveys$SurveyId),]
+
+# Use rdhs to retreive datasets, downloading them from DHS website if not already in the rdhs cache.
+Sys.setenv("rdhs_LOUD_DOWNLOAD" = TRUE)
+ird$path <- unlist(get_datasets(ird$FileName,clear_cache = TRUE))
+```
+
+Load all of the datasets into R as a list
+```{r}
+ir <- list()
+for(survid in ird$SurveyId){
+  print(survid)
+  dat <- readRDS(ird[which(ird$SurveyId == survid),]$path)
+  dat <- dat[grep("caseid|
+                |v001|v005|
+                |h33_1|h33_2|h33_3|h33_4|h33_5|h33_6|
+                |h34_1|h34_2|h34_3|h34_4|h34_5|h34_6|
+                |b8_01|b8_02|b8_03|b8_04|b8_05|b8_06|
+                |b19_01|b19_02|b19_03|b19_04|b19_05|b19_06|                
+                |v414g|v414h|v414i|v414j|v414k|v414l|v414m|v414n|
+                |h7_1|h7_2|h7_3|h7_4|h7_5|h7_6|
+                |h9_1|h9_2|h9_3|h9_4|h9_5|h9_6|
+                |h4_1|h4_2|h4_3|h4_4|h4_5|h4_6|
+                |h3_1|h3_2|h3_3|h3_4|h3_5|h3_6|
+                |m4_1|m4_2|m4_3|m4_4|m4_5|m4_6|
+                |v744a|v744b|v744c|v744d|v744e|v157|v133|v212|v511|
+                |v743a|v743b|v743d|v731|v715|v730|v501|v012|
+                |v113|v116|v119|v127|v128|v129|hv241|hv216|
+                |v106|
+                |v102|
+                |v190", names(dat))]
+  ir[[survid]] <- dat
+}
+
+ir <- lapply(ir, haven::as_factor)
+
+##Add survey-level variables
+ir <- Map(data.frame,
+          SurveyId = surveys$SurveyId,
+          CountryName = surveys$CountryName,
+          SurveyYear = surveys$SurveyYear,
+          ir)
+
+ir <- lapply(ir, function(x){ x$SurveyId <- factor(x$SurveyId) ; return(x)})
+ir <- lapply(ir, function(x){ x$CountryName <- factor(x$CountryName) ; return(x)})
+ir <- lapply(ir, function(x){ x$SurveyYear <- factor(x$SurveyYear) ; return(x)})
+```
+
+Dwelling Index
+```{r}
+data <- ir$BU2016DHS
+
+#floor
+data <- data %>% mutate(floor = as.numeric(case_when(v127=="natural" ~ -1,
+                                          v127=="earth / sand" ~ -1,
+                                          v127=="earth/sand" ~ -1,
+                                          v127=="earth, sand" ~ -1,
+                                          v127=="dung" ~ -1,
+                                          v127=="rudimentary" ~ -1,
+                                          v127=="wood planks" ~ 1,
+                                          v127=="palm / bamboo" ~ 1,
+                                          v127=="palm/bamboo" ~ 1,
+                                          v127=="palm, bamboo" ~ 1,
+                                          v127=="wood" ~ 1,
+                                          v127=="vinyl, asphalt strips" ~ 1,
+                                          v127=="vinyl or asphalt strips" ~ 1,
+                                          v127=="parquet or polished wood" ~ 1,
+                                          v127=="parquet, polished wood" ~ 1,
+                                          v127=="ceramic tiles" ~ 1.14,
+                                          v127=="cement" ~ 1.14,
+                                          v127=="carpet" ~ 1.14,
+                                          v127=="other" ~ 0,
+                                          v127=="not a dejure resident" ~ 0,
+                                          v127=="missing" ~ 0)))
+
+#toilet
+data <- data %>% mutate(toilet = as.numeric(case_when(v116=="flush toilet" ~ 1.14,
+                                          v116=="flush to piped sewer system" ~ 1.14,
+                                          v116=="flush to septic tank" ~ 1.14,
+                                          v116=="flush to pit latrine" ~ 1.14,
+                                          v116=="flush to somewhere else" ~ 1.14,
+                                          v116=="flush, don't know where" ~ 1.14,
+                                          v116=="pit toilet latrine" ~ 1.14,
+                                          v116=="ventilated improved pit latrine (vip)" ~ 0.68,
+                                          v116=="pit latrine with slab" ~ 0.68,
+                                          v116=="pit latrine without slab/open pit" ~ -0.11,
+                                          v116=="no facility" ~ 0,
+                                          v116=="no facility/bush/field" ~ 0,
+                                          v116=="composting toilet" ~ 0.68,
+                                          v116=="bucket toilet" ~ 0.68,
+                                          v116=="hanging toilet/latrine" ~ 0.68,
+                                          v116=="other" ~ 0,
+                                          v116=="not a dejure resident" ~ 0,
+                                          v116=="missing" ~ 0)))
+#wall
+data <- data %>% mutate(wall = as.numeric(case_when(v128=="natural" ~ -0.7,
+                                          v128=="no walls" ~ -0.7,
+                                          v128=="cane / palm / trunks" ~ -0.7,
+                                          v128=="cane/palm/trunks" ~ -0.7,
+                                          v128=="dirt" ~ -0.7,
+                                          v128=="rudimentary" ~ -0.7,
+                                          v128=="bamboo with mud" ~ 0.1,
+                                          v128=="pole with mud" ~ 0.1,
+                                          v128=="stone with mud" ~ 0.1,
+                                          v128=="uncovered adobe" ~ 0.1,
+                                          v128=="plywood" ~ 0,
+                                          v128=="cardboard" ~ -0.7,
+                                          v128=="reused wood" ~ 0,
+                                          v128=="finished" ~ 1.14,
+                                          v128=="cement" ~ 1.14,
+                                          v128=="stone with lime / cement" ~ 1.14,
+                                          v128=="stone with lime/cement" ~ 1.14,
+                                          v128=="bricks" ~ 1.14,
+                                          v128=="cement blocks" ~ 1.14,
+                                          v128=="covered adobe" ~ 1.14,
+                                          v128=="wood planks / shingles" ~ 1.14,
+                                          v128=="wood planks/shingles" ~ 1.14,
+                                          v128=="other" ~ 0,
+                                          v128=="not a dejure resident" ~ 0,
+                                          v128=="missing" ~ 0)))
+#roof
+data <- data %>% mutate(roof = as.numeric(case_when(v129=="natural" ~ -0.75,
+                                          v129=="no roof" ~ -0.75,
+                                          v129=="thatch/palm leaf" ~ -0.75,
+                                          v129=="thatch / palm leaf" ~ -0.75,
+                                          v129=="sod" ~ -0.75,
+                                          v129=="rudimentary" ~ -0.75,
+                                          v129=="rustic mat" ~ -0.75,
+                                          v129=="palm/bamboo" ~ -0.75,
+                                          v129=="palm / bamboo" ~ -0.75,
+                                          v129=="wood planks" ~ -0.75,
+                                          v129=="cardboard" ~ -0.75,
+                                          v129=="finished" ~ 0,
+                                          v129=="metal" ~ 0,
+                                          v129=="wood" ~ 0,
+                                          v129=="calamine/cement fiber" ~ 0.5,
+                                          v129=="zinc / cement fiber" ~ 0.5,
+                                          v129=="ceramic tiles" ~ 0.5,
+                                          v129=="cement" ~ 0.5,
+                                          v129=="roofing shingles" ~ 0.5,
+                                          v129=="other" ~ 0,
+                                          v129=="not a dejure resident" ~ 0,
+                                          v129=="missing" ~ 0)))
+#electric
+data <- data %>% mutate(electric = as.numeric(case_when(v119=="yes" ~ 0.78,
+                                          v119=="no" ~ 0,
+                                          v119=="not a dejure resident" ~ 0,
+                                          v119=="missing" ~ 0)))
+
+#water
+data <- data %>% mutate(water = if_else(str_detect(v113, "^(pipe)"), 0.78, 0))
+
+data %>% select(v116, toilet) %>% filter(is.na(toilet))
+data %>% select(v119, electric) %>% filter(is.na(electric))
+data %>% select(v129, roof) %>% filter(is.na(roof))
+data %>% select(v128, wall) %>% filter(is.na(wall))
+data %>% select(v127, floor) %>% filter(is.na(floor))
+data %>% select(v113, water) %>% filter(is.na(water))
+
+data <- data %>% mutate(dwell=floor+toilet+wall+roof+electric+water) %>% mutate(dwell_cat=ntile(dwell, 5)) %>% select(caseid, dwell_cat)
+
+write.csv(data, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/dwelling/BU2016DHS.csv", 
+          row.names=FALSE)
+```
+
+SWPER
+```{r}
+data <- ir$MW2015DHS
+data <- data %>% mutate(union = if_else(v501=="married", 1, 2)) %>% filter(union==1)
+
+data$v744a[data$v744a=="missing"] <- NA
+data$v744b[data$v744b=="missing"] <- NA
+data$v744c[data$v744c=="missing"] <- NA
+data$v744d[data$v744d=="missing"] <- NA
+data$v744e[data$v744e=="missing"] <- NA
+data$v731[data$v731=="missing"] <- NA
+data$v743a[data$v743a=="missing"] <- NA
+data$v743b[data$v743b=="missing"] <- NA
+data$v743d[data$v743d=="missing"] <- NA
+data$v157[data$v157=="missing"] <- NA
+data$v133[data$v133=="missing"] <- NA
+data$v715[data$v715=="missing"] <- NA
+data$v730[data$v730=="missing"] <- NA
+
+data <- data %>% mutate(beat1 = as.numeric(case_when(v744a=="yes" ~ -1,
+                                          v744a=="no" ~ 1,
+                                          v744a=="don't know" ~ 0)))
+data <- data %>% mutate(beat2 = as.numeric(case_when(v744b=="yes" ~ -1,
+                                          v744b=="no" ~ 1,
+                                          v744b=="don't know" ~ 0)))
+data <- data %>% mutate(beat3 = as.numeric(case_when(v744c=="yes" ~ -1,
+                                          v744c=="no" ~ 1,
+                                          v744c=="don't know" ~ 0)))
+data <- data %>% mutate(beat4 = as.numeric(case_when(v744d=="yes" ~ -1,
+                                          v744d=="no" ~ 1,
+                                          v744d=="don't know" ~ 0)))
+data <- data %>% mutate(beat5 = as.numeric(case_when(v744e=="yes" ~ -1,
+                                          v744e=="no" ~ 1,
+                                          v744e=="don't know" ~ 0)))
+
+data <- data %>% mutate(decide1 = as.numeric(case_when(v743a=="husband/partner alone"|v744a=="other" ~ -1,
+                                            v743a=="respondent and husband/partner"|v743a=="respondent and other person"~ 0,
+                                            v743a=="respondent alone" ~ 1)))
+
+data <- data %>% mutate(decide2 = as.numeric(case_when(v743b=="husband/partner alone"|v744b=="other" ~ -1,
+                                            v743b=="respondent and husband/partner"|v743b=="respondent and other person"~ 0,
+                                            v743b=="respondent alone" ~ 1)))
+
+data <- data %>% mutate(decide3 = as.numeric(case_when(v743d=="husband/partner alone"|v744d=="other" ~ -1,
+                                            v743d=="respondent and husband/partner"|v743d=="respondent and other person"~ 0,
+                                            v743d=="respondent alone" ~ 1)))
+data <- data %>% mutate(educ = as.numeric(v133))
+
+data <- data %>% mutate(work = as.numeric(case_when(v731=="no"~ 0,
+                                         v731=="in the past year"~ 1,
+                                         v731=="currently working" | v731=="have a job, but on leave last 7 days" ~ 2)))
+
+data <- data %>% mutate(read = as.numeric(case_when(v157=="not at all"~ 0,
+                                         v157=="less than once a week"~ 1,
+                                         v157=="at least once a week" | v157=="almost every day" ~ 2)))
+
+data <- data %>% mutate(age1cohab = as.numeric(v511))
+
+age1 <- data %>% mutate(age1birth = v212) %>% select(age1birth, v511) 
+v212_i <- imputation(imethod = "hotdeck", age1, Attribute = 1, Missing = NA, Value = 1)
+v212_i <- v212_i %>% select(-v511)
+data <- cbind(data,v212_i)
+
+data$v715[data$v715=="don't know"] <- NA
+data <- data %>% mutate(husb_educ = as.numeric(v715))
+
+data <- data %>% mutate(educ_diff = as.numeric(husb_educ) - as.numeric(educ))
+
+data<-data %>% mutate(husb_age = as.numeric(v730))
+data<-data %>% mutate(age_diff = as.numeric(v012) - husb_age)
+
+data$beat1[is.na(data$beat1)] <- 0
+data$beat2[is.na(data$beat2)] <- 0
+data$beat3[is.na(data$beat3)] <- 0
+data$beat4[is.na(data$beat4)] <- 0
+data$beat5[is.na(data$beat5)] <- 0
+data$decide1[is.na(data$decide1)] <- 0
+data$decide2[is.na(data$decide2)] <- 0
+data$decide3[is.na(data$decide3)] <- 0
+data$educ[is.na(data$educ)] <- 0
+data$work[is.na(data$work)] <- 0
+data$read[is.na(data$read)] <- 0
+data$decide1[is.na(data$decide1)] <- 0
+data$educ_diff[is.na(data$educ_diff)] <- 0
+data$age_diff[is.na(data$age_diff)] <- 0
+
+data <- data %>% mutate(att_score=
+                          ((-0.950)+(0.489*beat1)+(0.493*beat2)+(0.501*beat3)+(0.493*beat4)+(0.546*beat5)+(0.056*read)+(0.015*educ)+
+                             (-0.008*age1birth)+
+                             (-0.004*age1cohab)+(0.002*age_diff)+(-0.004*educ_diff)+(0.008*decide1)+(-0.034*decide2)+(0.008*decide3)+(-0.001*work))/1.818)
+
+data <- data %>% mutate(aut_score=
+                          ((-5.360)+(-0.006*beat1)+(-0.020*beat2)+(0.000*beat3)+(0.000*beat4)+(-0.003*beat5)+(0.549*read)+(0.09*educ)+
+                             (0.141*age1birth)+
+                             (0.131*age1cohab)+(0.026*age_diff)+(0.050*educ_diff)+(0.004*decide1)+(-0.013*decide2)+(-0.052*decide3)+(-0.060*work))/1.475)
+
+data <- data %>% mutate(dec_score=
+                          ((0.857)+(-0.001*beat1)+(-0.040*beat2)+(0.007*beat3)+(0.026*beat4)+(-0.014*beat5)+(0.150*read)+(0.026*educ)+
+                             (-0.019*age1birth)+
+                             (-0.006*age1cohab)+(0.012*age_diff)+(-0.009*educ_diff)+(0.770*decide1)+(0.831*decide2)+(0.768*decide3)+(0.180*work))/1.417)
+
+data <- data  %>% mutate(att_cat3 = ntile(att_score, 3))
+data <- data  %>% mutate(aut_cat3 = ntile(aut_score, 3))
+data <- data  %>% mutate(dec_cat3 = ntile(dec_score, 3))
+
+data <- data  %>% mutate(att_cat5 = ntile(att_score, 5))
+data <- data  %>% mutate(aut_cat5 = ntile(aut_score, 5))
+data <- data  %>% mutate(dec_cat5 = ntile(dec_score, 5))
+
+swper <- data %>% select(caseid, att_cat3, aut_cat3, dec_cat3, att_cat5, aut_cat5, dec_cat5)
+
+data <- ir$GA2012DHS
+data$v005 <- data$v005/1000000 #Reformat survey weights
+data <- merge(x=data, y=swper, by.x='caseid', by.y='caseid', fill=-9999, all.x = TRUE)
+data <- data %>% mutate(matedu = case_when(v106=="no education" ~ "None",
+                                           v106=="primary" ~ "Primary",
+                                           v106=="secondary" ~ "Secondary+",
+                                           v106=="higher" ~ "Secondary+"))
+
+c1 <- data %>% dplyr::select(caseid, v001, v005, b8_01, b19_01, h33_1, h34_1, h7_1, h9_1, h4_1, m4_1, att_cat3, aut_cat3, dec_cat3, att_cat5, aut_cat5, dec_cat5, matedu, v102, v190)
+c2 <- data %>% dplyr::select(caseid, v001, v005, b8_02, b19_02, h33_2, h34_2, h7_2, h9_2, h4_2, m4_2, att_cat3, aut_cat3, dec_cat3, att_cat5, aut_cat5, dec_cat5, matedu, v102, v190)
+c3 <- data %>% dplyr::select(caseid, v001, v005, b8_03, b19_03, h33_3, h34_3, h7_3, h9_3, h4_3, m4_3, att_cat3, aut_cat3, dec_cat3, att_cat5, aut_cat5, dec_cat5, matedu, v102, v190)
+c4 <- data %>% dplyr::select(caseid, v001, v005, b8_04, b19_04, h33_4, h34_4, h7_4, h9_4, h4_4, m4_4, att_cat3, aut_cat3, dec_cat3, att_cat5, aut_cat5, dec_cat5, matedu, v102, v190)
+c5 <- data %>% dplyr::select(caseid, v001, v005, b8_05, b19_05, h33_5, h34_5, h7_5, h9_5, h4_5, m4_5, att_cat3, aut_cat3, dec_cat3, att_cat5, aut_cat5, dec_cat5, matedu, v102, v190)
+c6 <- data %>% dplyr::select(caseid, v001, v005, b8_06, b19_06, h33_6, h34_6, h7_6, h9_6, h4_6, m4_6, att_cat3, aut_cat3, dec_cat3, att_cat5, aut_cat5, dec_cat5, matedu, v102, v190)
+
+names(c1) <- c('caseid', "cluster", "weight", 'age', 'age_m', 'vas_his', 'vas_6', "dtp3", "mea", "polio", "bf", "att_cat3", "aut_cat3", "dec_cat3", "att_cat5", "aut_cat5", "dec_cat5", "matedu", "res","sep")
+names(c2) <- c('caseid', "cluster", "weight", 'age', 'age_m', 'vas_his', 'vas_6', "dtp3", "mea", "polio", "bf", "att_cat3", "aut_cat3", "dec_cat3", "att_cat5", "aut_cat5", "dec_cat5", "matedu", "res","sep")
+names(c3) <- c('caseid', "cluster", "weight", 'age', 'age_m', 'vas_his', 'vas_6', "dtp3", "mea", "polio", "bf", "att_cat3", "aut_cat3", "dec_cat3", "att_cat5", "aut_cat5", "dec_cat5", "matedu", "res","sep")
+names(c4) <- c('caseid', "cluster", "weight", 'age', 'age_m', 'vas_his', 'vas_6', "dtp3", "mea", "polio", "bf", "att_cat3", "aut_cat3", "dec_cat3", "att_cat5", "aut_cat5", "dec_cat5", "matedu", "res","sep")
+names(c5) <- c('caseid', "cluster", "weight", 'age', 'age_m', 'vas_his', 'vas_6', "dtp3", "mea", "polio", "bf", "att_cat3", "aut_cat3", "dec_cat3", "att_cat5", "aut_cat5", "dec_cat5", "matedu", "res","sep")
+names(c6) <- c('caseid', "cluster", "weight", 'age', 'age_m', 'vas_his', 'vas_6', "dtp3", "mea", "polio", "bf", "att_cat3", "aut_cat3", "dec_cat3", "att_cat5", "aut_cat5", "dec_cat5", "matedu", "res","sep")
+
+data <- rbind(c1,c2,c3,c4,c5,c6)
+data <-data %>% filter(age_m>5) %>% filter(age_m<60)
+
+data <- data %>% mutate(dtp3_cat = case_when(dtp3=="vaccination date on card" ~ "yes",
+                                           dtp3=="reported by mother" ~ "yes",
+                                           dtp3=="vaccination marked on card" ~ "yes",
+                                           dtp3=="no" ~ "no"))
+data <- data %>% mutate(mea_cat = case_when(mea=="vaccination date on card" ~ "yes",
+                                           mea=="reported by mother" ~ "yes",
+                                           mea=="vaccination marked on card" ~ "yes",
+                                           mea=="no" ~ "no"))
+data <- data %>% mutate(polio_cat = case_when(polio=="vaccination date on card" ~ "yes",
+                                           polio=="reported by mother" ~ "yes",
+                                           polio=="vaccination marked on card" ~ "yes",
+                                           polio=="no" ~ "no"))
+data <- data %>% mutate(bf_cat = case_when(bf=="ever breastfed, not currently breastfeeding" ~ "ever breastfed",
+                                           bf=="still breastfeeding" ~ "ever breastfed",
+                                           bf=="never breastfed" ~ "never breastfed"))
+
+data <- data %>% mutate(age_cat = case_when(age == 0  ~ "06-11 m",
+                             age == 1 ~ "12-23 m",
+                             age == 2 | age ==4  ~ "24 -59 m"))
+
+write.csv(data, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/dhs/GA2012DHS.csv", 
+          row.names=FALSE)
+table(data$vas_his, data$vas_6)
+```
+
+
+SWPER
+```{r}
+data <- ir$GA2012DHS
+data <- data %>% mutate(union = if_else(v501=="married", 1, 2)) %>% filter(union==1)
+
+data$v744a[data$v744a=="missing"] <- NA
+data$v744b[data$v744b=="missing"] <- NA
+data$v744c[data$v744c=="missing"] <- NA
+data$v744d[data$v744d=="missing"] <- NA
+data$v744e[data$v744e=="missing"] <- NA
+data$v731[data$v731=="missing"] <- NA
+data$v743a[data$v743a=="missing"] <- NA
+data$v743b[data$v743b=="missing"] <- NA
+data$v743d[data$v743d=="missing"] <- NA
+data$v157[data$v157=="missing"] <- NA
+data$v133[data$v133=="missing"] <- NA
+data$v715[data$v715=="missing"] <- NA
+data$v730[data$v730=="missing"] <- NA
+
+data <- data %>% mutate(beat1 = as.numeric(case_when(v744a=="yes" ~ -1,
+                                          v744a=="no" ~ 1,
+                                          v744a=="don't know" ~ 0)))
+data <- data %>% mutate(beat2 = as.numeric(case_when(v744b=="yes" ~ -1,
+                                          v744b=="no" ~ 1,
+                                          v744b=="don't know" ~ 0)))
+data <- data %>% mutate(beat3 = as.numeric(case_when(v744c=="yes" ~ -1,
+                                          v744c=="no" ~ 1,
+                                          v744c=="don't know" ~ 0)))
+data <- data %>% mutate(beat4 = as.numeric(case_when(v744d=="yes" ~ -1,
+                                          v744d=="no" ~ 1,
+                                          v744d=="don't know" ~ 0)))
+data <- data %>% mutate(beat5 = as.numeric(case_when(v744e=="yes" ~ -1,
+                                          v744e=="no" ~ 1,
+                                          v744e=="don't know" ~ 0)))
+
+data <- data %>% mutate(decide1 = as.numeric(case_when(v743a=="husband/partner alone"|v744a=="other" ~ -1,
+                                            v743a=="respondent and husband/partner"|v743a=="respondent and other person"~ 0,
+                                            v743a=="respondent alone" ~ 1)))
+
+data <- data %>% mutate(decide2 = as.numeric(case_when(v743b=="husband/partner alone"|v744b=="other" ~ -1,
+                                            v743b=="respondent and husband/partner"|v743b=="respondent and other person"~ 0,
+                                            v743b=="respondent alone" ~ 1)))
+
+data <- data %>% mutate(decide3 = as.numeric(case_when(v743d=="husband/partner alone"|v744d=="other" ~ -1,
+                                            v743d=="respondent and husband/partner"|v743d=="respondent and other person"~ 0,
+                                            v743d=="respondent alone" ~ 1)))
+data <- data %>% mutate(educ = as.numeric(v133))
+
+data <- data %>% mutate(work = as.numeric(case_when(v731=="no"~ 0,
+                                         v731=="in the past year"~ 1,
+                                         v731=="currently working" | v731=="have a job, but on leave last 7 days" ~ 2)))
+
+data <- data %>% mutate(read = as.numeric(case_when(v157=="not at all"~ 0,
+                                         v157=="less than once a week"~ 1,
+                                         v157=="at least once a week" | v157=="almost every day" ~ 2)))
+
+data <- data %>% mutate(age1cohab = as.numeric(v511))
+
+age1 <- data %>% mutate(age1birth = v212) %>% select(age1birth, v511) 
+v212_i <- imputation(imethod = "hotdeck", age1, Attribute = 1, Missing = NA, Value = 1)
+v212_i <- v212_i %>% select(-v511)
+data <- cbind(data,v212_i)
+
+data$v715[data$v715=="don't know"] <- NA
+data <- data %>% mutate(husb_educ = as.numeric(v715))
+
+data <- data %>% mutate(educ_diff = as.numeric(husb_educ) - as.numeric(educ))
+
+data<-data %>% mutate(husb_age = as.numeric(v730))
+data<-data %>% mutate(age_diff = as.numeric(v012) - husb_age)
+
+data$beat1[is.na(data$beat1)] <- 0
+data$beat2[is.na(data$beat2)] <- 0
+data$beat3[is.na(data$beat3)] <- 0
+data$beat4[is.na(data$beat4)] <- 0
+data$beat5[is.na(data$beat5)] <- 0
+data$decide1[is.na(data$decide1)] <- 0
+data$decide2[is.na(data$decide2)] <- 0
+data$decide3[is.na(data$decide3)] <- 0
+data$educ[is.na(data$educ)] <- 0
+data$work[is.na(data$work)] <- 0
+data$read[is.na(data$read)] <- 0
+data$decide1[is.na(data$decide1)] <- 0
+data$educ_diff[is.na(data$educ_diff)] <- 0
+data$age_diff[is.na(data$age_diff)] <- 0
+
+data <- data %>% mutate(att_score=
+                          ((-0.950)+(0.489*beat1)+(0.493*beat2)+(0.501*beat3)+(0.493*beat4)+(0.546*beat5)+(0.056*read)+(0.015*educ)+
+                             (-0.008*age1birth)+
+                             (-0.004*age1cohab)+(0.002*age_diff)+(-0.004*educ_diff)+(0.008*decide1)+(-0.034*decide2)+(0.008*decide3)+(-0.001*work))/1.818)
+
+data <- data %>% mutate(aut_score=
+                          ((-5.360)+(-0.006*beat1)+(-0.020*beat2)+(0.000*beat3)+(0.000*beat4)+(-0.003*beat5)+(0.549*read)+(0.09*educ)+
+                             (0.141*age1birth)+
+                             (0.131*age1cohab)+(0.026*age_diff)+(0.050*educ_diff)+(0.004*decide1)+(-0.013*decide2)+(-0.052*decide3)+(-0.060*work))/1.475)
+
+data <- data %>% mutate(dec_score=
+                          ((0.857)+(-0.001*beat1)+(-0.040*beat2)+(0.007*beat3)+(0.026*beat4)+(-0.014*beat5)+(0.150*read)+(0.026*educ)+
+                             (-0.019*age1birth)+
+                             (-0.006*age1cohab)+(0.012*age_diff)+(-0.009*educ_diff)+(0.770*decide1)+(0.831*decide2)+(0.768*decide3)+(0.180*work))/1.417)
+
+data <- data  %>% mutate(att_cat3 = ntile(att_score, 3))
+data <- data  %>% mutate(aut_cat3 = ntile(aut_score, 3))
+data <- data  %>% mutate(dec_cat3 = ntile(dec_score, 3))
+
+data <- data  %>% mutate(att_cat5 = ntile(att_score, 5))
+data <- data  %>% mutate(aut_cat5 = ntile(aut_score, 5))
+data <- data  %>% mutate(dec_cat5 = ntile(dec_score, 5))
+
+swper <- data %>% select(caseid, att_cat3, aut_cat3, dec_cat3, att_cat5, aut_cat5, dec_cat5)
+
+
+data <- ir$GA2012DHS
+data$v005 <- data$v005/1000000 #Reformat survey weights
+data <- merge(x=data, y=swper, by.x='caseid', by.y='caseid', fill=-9999, all.x = TRUE)
+data <- data %>% mutate(matedu = case_when(v106=="no education" ~ "None",
+                                           v106=="primary" ~ "Primary",
+                                           v106=="secondary" ~ "Secondary+",
+                                           v106=="higher" ~ "Secondary+"))
+
+c1 <- data %>% dplyr::select(caseid, v001, v005, b8_01, h33_1, h34_1, h7_1, h9_1, h4_1, m4_1, att_cat3, aut_cat3, dec_cat3, att_cat5, aut_cat5, dec_cat5, matedu, v102, v190)
+c2 <- data %>% dplyr::select(caseid, v001, v005, b8_02, h33_2, h34_2, h7_2, h9_2, h4_2, m4_2, att_cat3, aut_cat3, dec_cat3, att_cat5, aut_cat5, dec_cat5, matedu, v102, v190)
+c3 <- data %>% dplyr::select(caseid, v001, v005, b8_03, h33_3, h34_3, h7_3, h9_3, h4_3, m4_3, att_cat3, aut_cat3, dec_cat3, att_cat5, aut_cat5, dec_cat5, matedu, v102, v190)
+c4 <- data %>% dplyr::select(caseid, v001, v005, b8_04, h33_4, h34_4, h7_4, h9_4, h4_4, m4_4, att_cat3, aut_cat3, dec_cat3, att_cat5, aut_cat5, dec_cat5, matedu, v102, v190)
+c5 <- data %>% dplyr::select(caseid, v001, v005, b8_05, h33_5, h34_5, h7_5, h9_5, h4_5, m4_5, att_cat3, aut_cat3, dec_cat3, att_cat5, aut_cat5, dec_cat5, matedu, v102, v190)
+c6 <- data %>% dplyr::select(caseid, v001, v005, b8_06, h33_6, h34_6, h7_6, h9_6, h4_6, m4_6, att_cat3, aut_cat3, dec_cat3, att_cat5, aut_cat5, dec_cat5, matedu, v102, v190)
+
+names(c1) <- c('caseid', "cluster", "weight", 'age', 'vas_his', 'vas_6', "dtp3", "mea", "polio", "bf", "att_cat3", "aut_cat3", "dec_cat3", "att_cat5", "aut_cat5", "dec_cat5", "matedu", "res","sep")
+names(c2) <- c('caseid', "cluster", "weight", 'age', 'vas_his', 'vas_6', "dtp3", "mea", "polio", "bf", "att_cat3", "aut_cat3", "dec_cat3", "att_cat5", "aut_cat5", "dec_cat5", "matedu", "res","sep")
+names(c3) <- c('caseid', "cluster", "weight", 'age', 'vas_his', 'vas_6', "dtp3", "mea", "polio", "bf", "att_cat3", "aut_cat3", "dec_cat3", "att_cat5", "aut_cat5", "dec_cat5", "matedu", "res","sep")
+names(c4) <- c('caseid', "cluster", "weight", 'age', 'vas_his', 'vas_6', "dtp3", "mea", "polio", "bf", "att_cat3", "aut_cat3", "dec_cat3", "att_cat5", "aut_cat5", "dec_cat5", "matedu", "res","sep")
+names(c5) <- c('caseid', "cluster", "weight", 'age', 'vas_his', 'vas_6', "dtp3", "mea", "polio", "bf", "att_cat3", "aut_cat3", "dec_cat3", "att_cat5", "aut_cat5", "dec_cat5", "matedu", "res","sep")
+names(c6) <- c('caseid', "cluster", "weight", 'age', 'vas_his', 'vas_6', "dtp3", "mea", "polio", "bf", "att_cat3", "aut_cat3", "dec_cat3", "att_cat5", "aut_cat5", "dec_cat5", "matedu", "res","sep")
+
+data <- rbind(c1,c2,c3,c4,c5,c6)
+data <- data %>% filter(age<5)
+
+data <- data %>% mutate(dtp3_cat = case_when(dtp3=="vaccination date on card" ~ "yes",
+                                           dtp3=="reported by mother" ~ "yes",
+                                           dtp3=="vaccination marked on card" ~ "yes",
+                                           dtp3=="no" ~ "no"))
+data <- data %>% mutate(mea_cat = case_when(mea=="vaccination date on card" ~ "yes",
+                                           mea=="reported by mother" ~ "yes",
+                                           mea=="vaccination marked on card" ~ "yes",
+                                           mea=="no" ~ "no"))
+data <- data %>% mutate(polio_cat = case_when(polio=="vaccination date on card" ~ "yes",
+                                           polio=="reported by mother" ~ "yes",
+                                           polio=="vaccination marked on card" ~ "yes",
+                                           polio=="no" ~ "no"))
+data <- data %>% mutate(bf_cat = case_when(bf=="ever breastfed, not currently breastfeeding" ~ "ever breastfed",
+                                           bf=="still breastfeeding" ~ "ever breastfed",
+                                           bf=="never breastfed" ~ "never breastfed"))
+
+write.csv(data, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/dhs/GA2012DHS.csv", 
+          row.names=FALSE)
+table(data$vas_his, data$vas_6)
+```
+
+```{r}
+data <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/dhs/GA2012DHS.csv")
+
+w_data <- data %>% as_survey_design(id = cluster, strata =NULL, weights = weight, nest=T)
+
+GA2012DHS_dtp3 <- w_data %>%
+  filter(!is.na(dtp3_cat)) %>% 
+  srvyr::group_by(dtp3_cat) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vas_6 == "yes", proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+GA2012DHS_mea <- w_data %>%
+  filter(!is.na(mea_cat)) %>% 
+  srvyr::group_by(mea_cat) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vas_6 == "yes", proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+GA2012DHS_polio <- w_data %>%
+  filter(!is.na(polio_cat)) %>% 
+  srvyr::group_by(polio_cat) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vas_6 == "yes", proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+GA2012DHS_bf <- w_data %>%
+  filter(!is.na(bf_cat)) %>% 
+  srvyr::group_by(bf_cat) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vas_6 == "yes", proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+GA2012DHS_age <- w_data %>%
+  filter(!is.na(age)) %>% 
+  srvyr::group_by(age) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vas_6 == "yes", proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+GA2012DHS_res <- w_data %>%
+  filter(!is.na(res)) %>% 
+  srvyr::group_by(res) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vas_6 == "yes", proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+GA2012DHS_sep <- w_data %>%
+  filter(!is.na(sep)) %>% 
+  srvyr::group_by(sep) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vas_6 == "yes", proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+GA2012DHS_matedu <- w_data %>%
+  filter(!is.na(matedu)) %>% 
+  srvyr::group_by(matedu) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vas_6 == "yes", proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+GA2012DHS_att <- w_data %>%
+  filter(!is.na(att_cat5)) %>% 
+  srvyr::group_by(att_cat5) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vas_6 == "yes", proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+GA2012DHS_aut <- w_data %>%
+  filter(!is.na(aut_cat5)) %>% 
+  srvyr::group_by(aut_cat5) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vas_6 == "yes", proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+GA2012DHS_dec <- w_data %>%
+  filter(!is.na(dec_cat5)) %>% 
+  srvyr::group_by(dec_cat5) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vas_6 == "yes", proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+
+GA2012DHS_dtp3$country <- "Gabon"
+GA2012DHS_mea$country <- "Gabon"
+GA2012DHS_polio$country <- "Gabon"
+GA2012DHS_bf$country <- "Gabon"
+GA2012DHS_age$country <- "Gabon"
+GA2012DHS_res$country <- "Gabon"
+GA2012DHS_sep$country <- "Gabon"
+GA2012DHS_matedu$country <- "Gabon"
+GA2012DHS_att$country <- "Gabon"
+GA2012DHS_aut$country <- "Gabon"
+GA2012DHS_dec$country <- "Gabon"
+```
+
+
+```{r}
+
+vas_cov_dtp3 <- rbind(AF2015DHS_dtp3,BD2017DHS_dtp3,BF2010DHS_dtp3,BJ2017DHS_dtp3,BO2008DHS_dtp3,BU2016DHS_dtp3,CD2013DHS_dtp3,CG2011DHS_dtp3,CI2012DHS_dtp3,CM2018DHS_dtp3,GA2012DHS_dtp3,GH2014DHS_dtp3,GM2019DHS_dtp3,GN2018DHS_dtp3,GU2015DHS_dtp3,HN2011DHS_dtp3,HT2016DHS_dtp3,IA2012DHS_dtp3,ID2012DHS_dtp3,JO2017DHS_dtp3,KE2014DHS_dtp3,KH2014DHS_dtp3,KM2012DHS_dtp3,KY2012DHS_dtp3,LB2019DHS_dtp3,LS2014DHS_dtp3,MD2008DHS_dtp3,ML2018DHS_dtp3,MM2016DHS_dtp3,MW2015DHS_dtp3,MZ2011DHS_dtp3,NG2018DHS_dtp3,NI2012DHS_dtp3,NP2016DHS_dtp3,PG2017DHS_dtp3,PH2017DHS_dtp3,PK2017DHS_dtp3,RW2015DHS_dtp3,SL2019DHS_dtp3,SN2018DHS_dtp3,ST2008DHS_dtp3,SZ2006DHS_dtp3,TD2014DHS_dtp3,TG2013DHS_dtp3,TJ2017DHS_dtp3,TL2016DHS_dtp3,TZ2015DHS_dtp3,UG2016DHS_dtp3,YE2013DHS_dtp3,ZM2018DHS_dtp3,ZW2015DHS_dtp3,GA2012DHS_dtp3,ZA2016DHS_dtp3,NM2013DHS_dtp3)
+
+vas_cov_mea <- rbind(AF2015DHS_mea,BD2017DHS_mea,BF2010DHS_mea,BJ2017DHS_mea,BO2008DHS_mea,BU2016DHS_mea,CD2013DHS_mea,CG2011DHS_mea,CI2012DHS_mea,CM2018DHS_mea,GA2012DHS_mea,GH2014DHS_mea,GM2019DHS_mea,GN2018DHS_mea,GU2015DHS_mea,HN2011DHS_mea,HT2016DHS_mea,IA2012DHS_mea,ID2012DHS_mea,JO2017DHS_mea,KE2014DHS_mea,KH2014DHS_mea,KM2012DHS_mea,KY2012DHS_mea,LB2019DHS_mea,LS2014DHS_mea,MD2008DHS_mea,ML2018DHS_mea,MM2016DHS_mea,MW2015DHS_mea,MZ2011DHS_mea,NG2018DHS_mea,NI2012DHS_mea,NP2016DHS_mea,PG2017DHS_mea,PH2017DHS_mea,PK2017DHS_mea,RW2015DHS_mea,SL2019DHS_mea,SN2018DHS_mea,ST2008DHS_mea,SZ2006DHS_mea,TD2014DHS_mea,TG2013DHS_mea,TJ2017DHS_mea,TL2016DHS_mea,TZ2015DHS_mea,UG2016DHS_mea,YE2013DHS_mea,ZM2018DHS_mea,ZW2015DHS_mea,GA2012DHS_mea,ZA2016DHS_mea,NM2013DHS_mea)
+
+vas_cov_polio <- rbind(AF2015DHS_polio,BD2017DHS_polio,BF2010DHS_polio,BJ2017DHS_polio,BO2008DHS_polio,BU2016DHS_polio,CD2013DHS_polio,CG2011DHS_polio,CI2012DHS_polio,CM2018DHS_polio,GA2012DHS_polio,GH2014DHS_polio,GM2019DHS_polio,GN2018DHS_polio,GU2015DHS_polio,HN2011DHS_polio,HT2016DHS_polio,IA2012DHS_polio,ID2012DHS_polio,JO2017DHS_polio,KE2014DHS_polio,KH2014DHS_polio,KM2012DHS_polio,KY2012DHS_polio,LB2019DHS_polio,LS2014DHS_polio,MD2008DHS_polio,ML2018DHS_polio,MM2016DHS_polio,MW2015DHS_polio,MZ2011DHS_polio,NG2018DHS_polio,NI2012DHS_polio,NP2016DHS_polio,PG2017DHS_polio,PH2017DHS_polio,PK2017DHS_polio,RW2015DHS_polio,SL2019DHS_polio,SN2018DHS_polio,ST2008DHS_polio,SZ2006DHS_polio,TD2014DHS_polio,TG2013DHS_polio,TJ2017DHS_polio,TL2016DHS_polio,TZ2015DHS_polio,UG2016DHS_polio,YE2013DHS_polio,ZM2018DHS_polio,ZW2015DHS_polio,GA2012DHS_polio,ZA2016DHS_polio,NM2013DHS_polio)
+
+vas_cov_bf <- rbind(AF2015DHS_bf,BD2017DHS_bf,BF2010DHS_bf,BJ2017DHS_bf,BO2008DHS_bf,BU2016DHS_bf,CD2013DHS_bf,CG2011DHS_bf,CI2012DHS_bf,CM2018DHS_bf,GA2012DHS_bf,GH2014DHS_bf,GM2019DHS_bf,GN2018DHS_bf,GU2015DHS_bf,HN2011DHS_bf,HT2016DHS_bf,IA2012DHS_bf,ID2012DHS_bf,JO2017DHS_bf,KE2014DHS_bf,KH2014DHS_bf,KM2012DHS_bf,KY2012DHS_bf,LB2019DHS_bf,LS2014DHS_bf,MD2008DHS_bf,ML2018DHS_bf,MM2016DHS_bf,MW2015DHS_bf,MZ2011DHS_bf,NG2018DHS_bf,NI2012DHS_bf,NP2016DHS_bf,PG2017DHS_bf,PH2017DHS_bf,PK2017DHS_bf,RW2015DHS_bf,SL2019DHS_bf,SN2018DHS_bf,ST2008DHS_bf,SZ2006DHS_bf,TD2014DHS_bf,TG2013DHS_bf,TJ2017DHS_bf,TL2016DHS_bf,TZ2015DHS_bf,UG2016DHS_bf,YE2013DHS_bf,ZM2018DHS_bf,ZW2015DHS_bf,GA2012DHS_bf,ZA2016DHS_bf,NM2013DHS_bf)
+
+vas_cov_age <- rbind(AF2015DHS_age,BD2017DHS_age,BF2010DHS_age,BJ2017DHS_age,BO2008DHS_age,BU2016DHS_age,CD2013DHS_age,CG2011DHS_age,CI2012DHS_age,CM2018DHS_age,GA2012DHS_age,GH2014DHS_age,GM2019DHS_age,GN2018DHS_age,GU2015DHS_age,HN2011DHS_age,HT2016DHS_age,IA2012DHS_age,ID2012DHS_age,JO2017DHS_age,KE2014DHS_age,KH2014DHS_age,KM2012DHS_age,KY2012DHS_age,LB2019DHS_age,LS2014DHS_age,MD2008DHS_age,ML2018DHS_age,MM2016DHS_age,MW2015DHS_age,MZ2011DHS_age,NG2018DHS_age,NI2012DHS_age,NP2016DHS_age,PG2017DHS_age,PH2017DHS_age,PK2017DHS_age,RW2015DHS_age,SL2019DHS_age,SN2018DHS_age,ST2008DHS_age,SZ2006DHS_age,TD2014DHS_age,TG2013DHS_age,TJ2017DHS_age,TL2016DHS_age,TZ2015DHS_age,UG2016DHS_age,YE2013DHS_age,ZM2018DHS_age,ZW2015DHS_age,GA2012DHS_age,ZA2016DHS_age,NM2013DHS_age)
+
+vas_cov_res <- rbind(AF2015DHS_res,BD2017DHS_res,BF2010DHS_res,BJ2017DHS_res,BO2008DHS_res,BU2016DHS_res,CD2013DHS_res,CG2011DHS_res,CI2012DHS_res,CM2018DHS_res,GA2012DHS_res,GH2014DHS_res,GM2019DHS_res,GN2018DHS_res,GU2015DHS_res,HN2011DHS_res,HT2016DHS_res,IA2012DHS_res,ID2012DHS_res,JO2017DHS_res,KE2014DHS_res,KH2014DHS_res,KM2012DHS_res,KY2012DHS_res,LB2019DHS_res,LS2014DHS_res,MD2008DHS_res,ML2018DHS_res,MM2016DHS_res,MW2015DHS_res,MZ2011DHS_res,NG2018DHS_res,NI2012DHS_res,NP2016DHS_res,PG2017DHS_res,PH2017DHS_res,PK2017DHS_res,RW2015DHS_res,SL2019DHS_res,SN2018DHS_res,ST2008DHS_res,SZ2006DHS_res,TD2014DHS_res,TG2013DHS_res,TJ2017DHS_res,TL2016DHS_res,TZ2015DHS_res,UG2016DHS_res,YE2013DHS_res,ZM2018DHS_res,ZW2015DHS_res,GA2012DHS_res,ZA2016DHS_res,NM2013DHS_res)
+
+vas_cov_sep <- rbind(AF2015DHS_sep,BD2017DHS_sep,BF2010DHS_sep,BJ2017DHS_sep,BO2008DHS_sep,BU2016DHS_sep,CD2013DHS_sep,CG2011DHS_sep,CI2012DHS_sep,CM2018DHS_sep,GA2012DHS_sep,GH2014DHS_sep,GM2019DHS_sep,GN2018DHS_sep,GU2015DHS_sep,HN2011DHS_sep,HT2016DHS_sep,IA2012DHS_sep,ID2012DHS_sep,JO2017DHS_sep,KE2014DHS_sep,KH2014DHS_sep,KM2012DHS_sep,KY2012DHS_sep,LB2019DHS_sep,LS2014DHS_sep,MD2008DHS_sep,ML2018DHS_sep,MM2016DHS_sep,MW2015DHS_sep,MZ2011DHS_sep,NG2018DHS_sep,NI2012DHS_sep,NP2016DHS_sep,PG2017DHS_sep,PH2017DHS_sep,PK2017DHS_sep,RW2015DHS_sep,SL2019DHS_sep,SN2018DHS_sep,ST2008DHS_sep,SZ2006DHS_sep,TD2014DHS_sep,TG2013DHS_sep,TJ2017DHS_sep,TL2016DHS_sep,TZ2015DHS_sep,UG2016DHS_sep,YE2013DHS_sep,ZM2018DHS_sep,ZW2015DHS_sep,GA2012DHS_sep,ZA2016DHS_sep,NM2013DHS_sep)
+
+vas_cov_matedu <- rbind(AF2015DHS_matedu,BD2017DHS_matedu,BF2010DHS_matedu,BJ2017DHS_matedu,BO2008DHS_matedu,BU2016DHS_matedu,CD2013DHS_matedu,CG2011DHS_matedu,CI2012DHS_matedu,CM2018DHS_matedu,GA2012DHS_matedu,GH2014DHS_matedu,GM2019DHS_matedu,GN2018DHS_matedu,GU2015DHS_matedu,HN2011DHS_matedu,HT2016DHS_matedu,IA2012DHS_matedu,ID2012DHS_matedu,JO2017DHS_matedu,KE2014DHS_matedu,KH2014DHS_matedu,KM2012DHS_matedu,KY2012DHS_matedu,LB2019DHS_matedu,LS2014DHS_matedu,MD2008DHS_matedu,ML2018DHS_matedu,MM2016DHS_matedu,MW2015DHS_matedu,MZ2011DHS_matedu,NG2018DHS_matedu,NI2012DHS_matedu,NP2016DHS_matedu,PG2017DHS_matedu,PH2017DHS_matedu,PK2017DHS_matedu,RW2015DHS_matedu,SL2019DHS_matedu,SN2018DHS_matedu,ST2008DHS_matedu,SZ2006DHS_matedu,TD2014DHS_matedu,TG2013DHS_matedu,TJ2017DHS_matedu,TL2016DHS_matedu,TZ2015DHS_matedu,UG2016DHS_matedu,ZM2018DHS_matedu,ZW2015DHS_matedu,GA2012DHS_matedu,ZA2016DHS_matedu,NM2013DHS_matedu)
+
+vas_cov_att <- rbind(AF2015DHS_att,BD2017DHS_att,BF2010DHS_att,BJ2017DHS_att,BO2008DHS_att,BU2016DHS_att,CD2013DHS_att,CG2011DHS_att,CI2012DHS_att,CM2018DHS_att,GA2012DHS_att,GH2014DHS_att,GM2019DHS_att,GN2018DHS_att,GU2015DHS_att,HN2011DHS_att,HT2016DHS_att,IA2012DHS_att,ID2012DHS_att,JO2017DHS_att,KE2014DHS_att,KH2014DHS_att,KM2012DHS_att,KY2012DHS_att,LB2019DHS_att,LS2014DHS_att,MD2008DHS_att,ML2018DHS_att,MM2016DHS_att,MW2015DHS_att,MZ2011DHS_att,NG2018DHS_att,NI2012DHS_att,NP2016DHS_att,PG2017DHS_att,PH2017DHS_att,PK2017DHS_att,RW2015DHS_att,SL2019DHS_att,SN2018DHS_att,ST2008DHS_att,SZ2006DHS_att,TD2014DHS_att,TG2013DHS_att,TJ2017DHS_att,TL2016DHS_att,TZ2015DHS_att,UG2016DHS_att,YE2013DHS_att,ZM2018DHS_att,ZW2015DHS_att,GA2012DHS_att,ZA2016DHS_att,NM2013DHS_att)
+
+vas_cov_aut <- rbind(AF2015DHS_aut,BD2017DHS_aut,BF2010DHS_aut,BJ2017DHS_aut,BO2008DHS_aut,BU2016DHS_aut,CD2013DHS_aut,CG2011DHS_aut,CI2012DHS_aut,CM2018DHS_aut,GA2012DHS_aut,GH2014DHS_aut,GM2019DHS_aut,GN2018DHS_aut,GU2015DHS_aut,HN2011DHS_aut,HT2016DHS_aut,IA2012DHS_aut,ID2012DHS_aut,JO2017DHS_aut,KE2014DHS_aut,KH2014DHS_aut,KM2012DHS_aut,KY2012DHS_aut,LB2019DHS_aut,LS2014DHS_aut,MD2008DHS_aut,ML2018DHS_aut,MM2016DHS_aut,MW2015DHS_aut,MZ2011DHS_aut,NG2018DHS_aut,NI2012DHS_aut,NP2016DHS_aut,PG2017DHS_aut,PH2017DHS_aut,PK2017DHS_aut,RW2015DHS_aut,SL2019DHS_aut,SN2018DHS_aut,ST2008DHS_aut,SZ2006DHS_aut,TD2014DHS_aut,TG2013DHS_aut,TJ2017DHS_aut,TL2016DHS_aut,TZ2015DHS_aut,UG2016DHS_aut,YE2013DHS_aut,ZM2018DHS_aut,ZW2015DHS_aut,GA2012DHS_aut,ZA2016DHS_aut,NM2013DHS_aut)
+
+vas_cov_dec <- rbind(AF2015DHS_dec,BD2017DHS_dec,BF2010DHS_dec,BJ2017DHS_dec,BO2008DHS_dec,BU2016DHS_dec,CD2013DHS_dec,CG2011DHS_dec,CI2012DHS_dec,CM2018DHS_dec,GA2012DHS_dec,GH2014DHS_dec,GM2019DHS_dec,GN2018DHS_dec,GU2015DHS_dec,HN2011DHS_dec,HT2016DHS_dec,IA2012DHS_dec,ID2012DHS_dec,JO2017DHS_dec,KE2014DHS_dec,KH2014DHS_dec,KM2012DHS_dec,KY2012DHS_dec,LB2019DHS_dec,LS2014DHS_dec,MD2008DHS_dec,ML2018DHS_dec,MM2016DHS_dec,MW2015DHS_dec,MZ2011DHS_dec,NG2018DHS_dec,NI2012DHS_dec,NP2016DHS_dec,PG2017DHS_dec,PH2017DHS_dec,PK2017DHS_dec,RW2015DHS_dec,SL2019DHS_dec,SN2018DHS_dec,ST2008DHS_dec,SZ2006DHS_dec,TD2014DHS_dec,TG2013DHS_dec,TJ2017DHS_dec,TL2016DHS_dec,TZ2015DHS_dec,UG2016DHS_dec,YE2013DHS_dec,ZM2018DHS_dec,ZW2015DHS_dec,GA2012DHS_dec,ZA2016DHS_dec,NM2013DHS_dec)
+```
+```{r}
+#Create order for dumbell plot
+order <- vas_cov_dtp3 %>% filter(dtp3_cat=="yes") %>% arrange(vasupp) %>% select(country) %>% dplyr::mutate(order = row_number())
+vas_cov_dtp3<- merge(x=vas_cov_dtp3, y=order, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+
+order <- vas_cov_mea %>% filter(mea_cat=="yes") %>% arrange(vasupp) %>% select(country) %>% dplyr::mutate(order = row_number())
+vas_cov_mea<- merge(x=vas_cov_mea, y=order, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+order <- vas_cov_polio %>% filter(polio_cat=="yes") %>% arrange(vasupp) %>% select(country) %>% dplyr::mutate(order = row_number())
+vas_cov_polio<- merge(x=vas_cov_polio, y=order, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+order <- vas_cov_age %>% filter(age=="4") %>% arrange(vasupp) %>% select(country) %>% dplyr::mutate(order = row_number())
+vas_cov_age<- merge(x=vas_cov_age, y=order, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+order <- vas_cov_att %>% filter(att_cat5=="5") %>% arrange(vasupp) %>% select(country) %>% dplyr::mutate(order = row_number())
+vas_cov_att<- merge(x=vas_cov_att, y=order, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+order <- vas_cov_aut %>% filter(aut_cat5=="5") %>% arrange(vasupp) %>% select(country) %>% dplyr::mutate(order = row_number())
+vas_cov_aut<- merge(x=vas_cov_aut, y=order, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+order <- vas_cov_bf %>% filter(bf_cat=="ever breastfed") %>% arrange(vasupp) %>% select(country) %>% dplyr::mutate(order = row_number())
+vas_cov_bf<- merge(x=vas_cov_bf, y=order, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+order <- vas_cov_dec %>% filter(dec_cat5=="5") %>% arrange(vasupp) %>% select(country) %>% dplyr::mutate(order = row_number())
+vas_cov_dec<- merge(x=vas_cov_dec, y=order, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+order <- vas_cov_matedu %>% filter(matedu=="Secondary+") %>% arrange(vasupp) %>% select(country) %>% dplyr::mutate(order = row_number())
+vas_cov_matedu<- merge(x=vas_cov_matedu, y=order, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+order <- vas_cov_res %>% filter(res=="urban") %>% arrange(vasupp) %>% select(country) %>% dplyr::mutate(order = row_number())
+vas_cov_res<- merge(x=vas_cov_res, y=order, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+order <- vas_cov_sep %>% filter(sep=="richest") %>% arrange(vasupp) %>% select(country) %>% dplyr::mutate(order = row_number())
+vas_cov_sep<- merge(x=vas_cov_sep, y=order, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+
+write.csv(vas_cov_dtp3, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_dtp3.csv", row.names=FALSE)
+write.csv(vas_cov_age, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_age.csv", row.names=FALSE)
+write.csv(vas_cov_att, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_att.csv", row.names=FALSE)
+write.csv(vas_cov_aut, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_aut.csv", row.names=FALSE)
+write.csv(vas_cov_bf, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_bf.csv", row.names=FALSE)
+write.csv(vas_cov_dec, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_dec.csv", row.names=FALSE)
+write.csv(vas_cov_matedu, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_matedu.csv", row.names=FALSE)
+write.csv(vas_cov_mea, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_mea.csv", row.names=FALSE)
+write.csv(vas_cov_polio, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_polio.csv", row.names=FALSE)
+write.csv(vas_cov_res, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_res.csv", row.names=FALSE)
+write.csv(vas_cov_sep, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_sep.csv", row.names=FALSE)
+```
+

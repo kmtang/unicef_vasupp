@@ -1,0 +1,210 @@
+---
+title: "rdhs_vas_dtp3"
+author: "Kevin Tang"
+date: "9/18/2021"
+output: html_document
+---
+
+```{r}
+library(rdhs)
+library(demogsurv)
+library(data.table)
+library(haven)
+pacman::p_load(rio,tidyverse,survey,srvyr,gtsummary,plyr)
+options(stringsAsFactors = TRUE)
+```
+
+Download the DHS data
+```{r}
+## set up your credentials
+set_rdhs_config(email = "kevin.tang1@student.lshtm.ac.uk",
+                password_prompt =  TRUE,
+                project = "Micronutrient Action Policy Support Tool", # Put your project name here
+                config_path = "rdhs.json",
+                global=FALSE)
+
+# we will give our permission here so that we don't have to provide a prompt within the README.
+Sys.setenv("rdhs_RENVIRON_PERMISSION"=1)
+
+## a little nugget to return API requests as data.table rather than data.frame.
+Sys.setenv(rdhs_DATA_TABLE = "TRUE")
+
+## Identify all DHS surveys for the following countries
+countries <- dhs_countries()
+cc <- c( "ET","MW","CM","BJ","CF","ML","NP","PK","ZA","AO","BU","BD","GM","HT","LB","NG","PG","PH","SN","SL","TJ","TZ","TL","UG","ZM","ZW")
+cc <- c("BF","MD","NI","AF","KH","TD","CG","CD","CI","GA","GH","BO","KM","SZ","GN","KE","LS","MZ","MM","NM","RW","ST","TG","YE","GU","HN","ID","KY")
+
+# Use rdhs to retreive datasets, downloading them from DHS website if not already in the rdhs cache.
+surveys <- dhs_surveys(countryIds = cc, surveyYearStart=2005, surveyType = "DHS")
+
+# Identify births recode (BR) datasets corresponding to these surveys.
+step <- dhs_datasets(fileType = "IR", fileFormat = "flat")
+ird <- step[which(step$SurveyId %in% surveys$SurveyId),]
+
+# Use rdhs to retreive datasets, downloading them from DHS website if not already in the rdhs cache.
+Sys.setenv("rdhs_LOUD_DOWNLOAD" = TRUE)
+ird$path <- unlist(get_datasets(ird$FileName,clear_cache = TRUE))
+```
+
+Load all of the datasets into R as a list
+```{r}
+ir <- list()
+for(survid in ird$SurveyId){
+  print(survid)
+  dat <- readRDS(ird[which(ird$SurveyId == survid),]$path)
+  dat <- dat[grep("caseid|
+                |v001|v005|
+                |h34_1|h34_2|h34_3|h34_4|h34_5|h34_6|
+                |b8_01|b8_02|b8_03|b8_04|b8_05|b8_06|
+                |b19_01|b19_02|b19_03|b19_04|b19_05|b19_06|                
+                |v414g|v414h|v414i|v414j|v414k|v414l|v414m|v414n|
+                |h3_1|h3_2|h3_3|h3_4|h3_5|h3_6|
+                |h9_1|h9_2|h9_3|h9_4|h9_5|h9_6|
+                |v106|
+                |v024|
+                |v102|
+                |v139|
+                |v190", names(dat))]
+  ir[[survid]] <- dat
+}
+
+ir <- lapply(ir, haven::as_factor)
+
+##Add survey-level variables
+
+ir <- Map(data.frame,
+          SurveyId = surveys$SurveyId,
+          CountryName = surveys$CountryName,
+          SurveyYear = surveys$SurveyYear,
+          ir)
+
+ir <- lapply(ir, function(x){ x$SurveyId <- factor(x$SurveyId) ; return(x)})
+ir <- lapply(ir, function(x){ x$CountryName <- factor(x$CountryName) ; return(x)})
+ir <- lapply(ir, function(x){ x$SurveyYear <- factor(x$SurveyYear) ; return(x)})
+```
+
+
+
+#INDEPENDENT COUNTRY COVERAGE
+```{r}
+#Country by country analysis
+data <- ir$YE2013DHS
+
+#Reformat survey weights
+data$v005 <- data$v005/1000000 
+
+c1 <- data %>% dplyr::select(caseid, v001, v005, b8_01, h34_1, h3_1, v024)
+c2 <- data %>% dplyr::select(caseid, v001, v005, b8_02, h34_2, h3_2, v024)
+c3 <- data %>% dplyr::select(caseid, v001, v005, b8_03, h34_3, h3_3, v024)
+c4 <- data %>% dplyr::select(caseid, v001, v005, b8_04, h34_4, h3_4, v024)
+c5 <- data %>% dplyr::select(caseid, v001, v005, b8_05, h34_5, h3_5, v024)
+c6 <- data %>% dplyr::select(caseid, v001, v005, b8_06, h34_6, h3_6, v024)
+
+names(c1) <- c('caseid',"cluster", "weight",'age', 'vas', "dtp1", "region")
+names(c2) <- c('caseid',"cluster", "weight",'age', 'vas', "dtp1", "region")
+names(c3) <- c('caseid',"cluster", "weight",'age', 'vas', "dtp1", "region")
+names(c4) <- c('caseid',"cluster", "weight",'age', 'vas', "dtp1", "region")
+names(c5) <- c('caseid',"cluster", "weight",'age', 'vas', "dtp1", "region")
+names(c6) <- c('caseid',"cluster", "weight",'age', 'vas', "dtp1", "region")
+
+data <- rbind(c1,c2,c3,c4,c5,c6)
+data <- data %>% filter(age<6)
+
+#data <- data %>% mutate(vas = case_when(vas=="no" ~ "no",
+ #                                          vas=="yes, red" ~ "yes",
+  #                                         vas=="yes, blue" ~ "yes",
+   #                                        vas=="don't know" ~ "don't know"))
+
+#Adjust for DHS weights
+w_data <- data %>% as_survey_design(id = cluster, strata =NULL, weights = weight, nest=T)
+
+IA2012DHS_region <- w_data  %>%
+  srvyr::group_by(region) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vas == "yes", proportion = TRUE, vartype = "ci",na.rm = T)) * 100) 
+  #filter(vasupp == min(vasupp) |vasupp == max(vasupp))
+
+IA2012DHS_region$country <- "India"
+
+write.csv(IA2012DHS_region, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/regions/IA2012DHS.csv", row.names=FALSE)
+```
+
+```{r}
+#Calculate stratified coverage and 95%CI limits 
+YE<- w_data %>%
+  filter(!is.na(dtp3_cat)) %>% 
+  srvyr::group_by(dtp3_cat) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vasupp == 1, proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+YE$country <- "Yemen"
+
+vas_cov <- rbind(AO,BD,BJ,BU,CM,ET,GM,HT,LB,MW,ML,NP,NG,PK,PG,PH,SN,SL,ZA,TJ,TZ,TL,UG,ZM,ZW,AF,BO,BF,KH,TD,KM,CG,CD,CI,SZ,GA,GH,GN,KE,LS,MD,MZ,MM,NM,NI,RW,ST,TG,YE)
+
+ggplot(vas_cov) + 
+  geom_pointrange(aes(x = reorder(country, order), y = vasupp, ymin = vasupp_low, ymax = vasupp_upp, color = dtp3_cat))+ 
+  theme_bw() +
+  coord_flip(ylim = c(0, 100)) +
+  labs(y = "Percentage of children consuming VAS in the prior 6 months",
+       x = "Country") +
+  scale_y_continuous(breaks = round(seq(min(0), max(100), by = 20),1))+
+  theme(plot.caption = element_text(hjust = 1))
+```
+
+```{r}
+#Create order for dumbell plot
+order <- vas_cov %>% filter(dtp3_cat=="yes") %>% arrange(vasupp) %>% select(country) %>% dplyr::mutate(order = row_number())
+vas_cov<- merge(x=vas_cov, y=order, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+
+write.csv(vas_cov, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_dtp3.csv", row.names=FALSE)
+
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_dtp3.csv")
+```
+
+```{r}
+#Country by country analysis
+data <- ir$BU2016DHS
+
+#Reformat survey weights
+data$v005 <- data$v005/1000000 
+
+c1 <- data %>% dplyr::select(caseid, v001, v005, b8_01, b19_01, h34_1, h3_1, v024)
+c2 <- data %>% dplyr::select(caseid, v001, v005, b8_02, b19_02, h34_2, h3_2, v024)
+c3 <- data %>% dplyr::select(caseid, v001, v005, b8_03, b19_03, h34_3, h3_3, v024)
+c4 <- data %>% dplyr::select(caseid, v001, v005, b8_04, b19_04, h34_4, h3_4, v024)
+c5 <- data %>% dplyr::select(caseid, v001, v005, b8_05, b19_05, h34_5, h3_5, v024)
+c6 <- data %>% dplyr::select(caseid, v001, v005, b8_06, b19_06, h34_6, h3_6, v024)
+
+names(c1) <- c('caseid', "cluster", "weight", 'age', 'age_m', 'vas', "dtp1", "region")
+names(c2) <- c('caseid', "cluster", "weight", 'age', 'age_m', 'vas', "dtp1", "region")
+names(c3) <- c('caseid', "cluster", "weight", 'age', 'age_m', 'vas', "dtp1", "region")
+names(c4) <- c('caseid', "cluster", "weight", 'age', 'age_m', 'vas', "dtp1", "region")
+names(c5) <- c('caseid', "cluster", "weight", 'age', 'age_m', 'vas', "dtp1", "region")
+names(c6) <- c('caseid', "cluster", "weight", 'age', 'age_m', 'vas', "dtp1", "region")
+
+data <- rbind(c1,c2,c3,c4,c5,c6)
+data <-data %>% filter(age_m>5) %>% filter(age_m<60)
+
+#Adjust for DHS weights
+w_data <- data  %>% as_survey_design(id = cluster, strata =NULL, weights = weight, nest=T)
+
+BU2016DHS_region <- w_data  %>%
+  srvyr::group_by(region) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vas == "yes", proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+  #filter(vasupp == min(vasupp) |vasupp == max(vasupp))
+
+BU2016DHS_region$country <- "Burundi"
+
+write.csv(CM2018DHS_region, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/regions/CM2018DHS.csv", row.names=FALSE)
+```
+
+```{r}
+vas_cov_region <- rbind(AF2015DHS_region,BD2017DHS_region,BF2010DHS_region,BJ2017DHS_region,BU2016DHS_region,CD2013DHS_region,CG2011DHS_region,CI2012DHS_region,CM2018DHS_region,GA2012DHS_region,GH2014DHS_region,GM2019DHS_region,GN2018DHS_region,GU2015DHS_region,HN2011DHS_region,HT2016DHS_region,IA2012DHS_region,ID2012DHS_region,KE2014DHS_region,KH2014DHS_region,KM2012DHS_region,KY2012DHS_region,LB2019DHS_region,LS2014DHS_region,ML2018DHS_region,MM2016DHS_region,MW2015DHS_region,MZ2011DHS_region,NG2018DHS_region,NI2012DHS_region,NP2016DHS_region,PG2017DHS_region,PH2017DHS_region,PK2017DHS_region,RW2015DHS_region,SL2019DHS_region,SN2018DHS_region,TD2014DHS_region,TG2013DHS_region,TJ2017DHS_region,TL2016DHS_region,TZ2015DHS_region,UG2016DHS_region,YE2013DHS_region,ZM2018DHS_region,ZW2015DHS_region,ZA2016DHS_region,NM2013DHS_region, ET2016DHS_region)
+
+order <- vas_cov_region %>% group_by(country) %>% filter(vasupp == max(vasupp)) %>% arrange(vasupp) %>% select(country)
+vas_cov_region<- merge(x=vas_cov_region, y=order, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+
+write.csv(vas_cov_region, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_region.csv", row.names=FALSE)
+```
+

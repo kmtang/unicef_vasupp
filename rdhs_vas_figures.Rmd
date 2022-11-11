@@ -1,0 +1,392 @@
+---
+title: "rdhs_vas_figures"
+author: "Kevin Tang"
+date: "9/22/2021"
+output: html_document
+---
+
+```{r}
+nat_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_nat.csv")
+```
+
+
+Diet
+```{r}
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_vafood_2.csv")
+vas_cov <- merge(x=vas_cov, y=nat_cov, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+
+vas_cov %>% 
+  ggplot() + 
+  geom_pointrange(aes(x = reorder(country, order), y = vasupp, ymin = vasupp_low, ymax = vasupp_upp, shape = vafood, color = vafood))+ 
+  theme_bw() +
+  scale_colour_manual(name = "Consumed VA-rich foods?",
+                      labels = c("No", "Yes"),
+                      values = c("#9970AB", "#5AAE61")) +   
+  #scale_shape_manual(name = "Consumed VA-rich foods?",
+                     #labels = c("No", "Yes"),
+                     #values = c(19, 17)) +
+  scale_shape_discrete("Consumed VA-rich foods?")+
+  coord_flip(ylim = c(0, 100)) +
+  labs(y = "Percentage receiving VAS in prior 6 months",
+       x = ""
+       #caption = "*Philippines DHS did not collect dietary data"
+       ) +
+  scale_y_continuous(breaks = round(seq(min(0), max(100), by = 20),1))+
+  theme(plot.caption = element_text(hjust = 1)) +
+ theme(legend.position = "top")
+```
+
+DTP1 Vaccination
+```{r}
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_dtp1.csv")
+
+vas_cov %>% filter(country!="Bolivia"&
+                     country!="ESwatini"&
+                     country!="Jordan"&
+                     country!="Madagascar"&
+                     country!="Sao Tome & Principe") %>% 
+a <-ggplot() + 
+  geom_pointrange(aes(x = reorder(country, order), y = vasupp, ymin = vasupp_low, ymax = vasupp_upp, shape = dtp1_cat, color = dtp1_cat))+ 
+  #geom_point(aes(x = reorder(country, order), y = nat_cov), shape='cross')+
+  theme_bw() +
+  scale_colour_manual(name = "Received DTP (first dose)?",
+                      #labels = c("With lowest coverage", "With highest coverage"),
+                      values = c("#9970AB", "#5AAE61")) +   
+  scale_shape_manual(name = "Received DTP (first dose)?",
+                     #labels = c("With lowest coverage", "With highest coverage"),
+                     values = c(19, 17)) +
+  scale_shape_discrete("Received DTP (first dose)?")+
+  coord_flip(ylim = c(0, 100)) +
+  labs(y = "Percentage receiving VAS in prior 6 months",
+       x = "") +
+  scale_y_continuous(breaks = round(seq(min(0), max(100), by = 20),1))+
+  theme(plot.caption = element_text(hjust = 1)) +
+ theme(legend.position = "top")
+```
+
+DTP3 Vaccination
+```{r}
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_dtp3.csv")
+vas_cov <- merge(x=vas_cov, y=nat_cov, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+
+vas_cov %>% filter(country!="Bolivia"&
+                     country!="ESwatini"&
+                     country!="Jordan"&
+                     country!="Madagascar"&
+                     country!="Sao Tome & Principe") %>% 
+ggplot() + 
+  geom_pointrange(aes(x = reorder(country, order), y = vasupp, ymin = vasupp_low, ymax = vasupp_upp, shape = dtp3_cat))+ 
+  theme_bw() +
+  scale_shape_discrete("Received DTP (third dose)?")+
+  coord_flip(ylim = c(0, 100)) +
+  labs(y = "Percentage receiving VAS in prior 6 months",
+       x = "") +
+  scale_y_continuous(breaks = round(seq(min(0), max(100), by = 20),1))+
+  theme(plot.caption = element_text(hjust = 1)) +
+ theme(legend.position = "top")
+```
+
+Measles Vaccination
+```{r}
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_mea.csv")
+vas_cov <- merge(x=vas_cov, y=nat_cov, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+
+b <- vas_cov %>% filter(country!="Bolivia"&
+                     country!="ESwatini"&
+                     country!="Jordan"&
+                     country!="Madagascar"&
+                     country!="Sao Tome & Principe") %>% 
+ggplot() + 
+  geom_pointrange(aes(x = reorder(country, order), y = vasupp, ymin = vasupp_low, ymax = vasupp_upp, shape = mea_cat, color = mea_cat))+ 
+ # geom_point(aes(x = reorder(country, order_nat), y = nat_cov), shape='cross')+
+  theme_bw() +
+  scale_colour_manual(name = "Received measles (first dose)?",
+                      #labels = c("With lowest coverage", "With highest coverage"),
+                      values = c("#9970AB", "#5AAE61")) +   
+  scale_shape_manual(name = "Received measles (first dose)?",
+                     #labels = c("With lowest coverage", "With highest coverage"),
+                     values = c(19, 17)) +
+  scale_shape_discrete("Received measles (first dose)?")+
+  coord_flip(ylim = c(0, 100)) +
+  labs(y = "Percentage receiving VAS in prior 6 months",
+       x = "") +
+  scale_y_continuous(breaks = round(seq(min(0), max(100), by = 20),1))+
+  theme(plot.caption = element_text(hjust = 1)) +
+ theme(legend.position = "top")
+```
+
+Polio Vaccination
+```{r}
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_polio.csv")
+
+vas_cov %>% filter(country!="Bolivia"&
+                     country!="ESwatini"&
+                     country!="Jordan"&
+                     country!="Madagascar"&
+                     country!="Sao Tome & Principe") %>% 
+ggplot() + 
+  geom_pointrange(aes(x = reorder(country, order2), y = vasupp, ymin = vasupp_low, ymax = vasupp_upp, shape = polio_cat))+ 
+  theme_bw() +
+  scale_shape_discrete("Received polio (first dose)?")+
+  coord_flip(ylim = c(0, 100)) +
+  labs(y = "Percentage receiving VAS in prior 6 months",
+       x = "") +
+  scale_y_continuous(breaks = round(seq(min(0), max(100), by = 20),1))+
+  theme(plot.caption = element_text(hjust = 1)) +
+ theme(legend.position = "top")
+```
+
+Residence
+```{r}
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_res.csv")
+
+a <- vas_cov %>% filter(country!="Bolivia"&
+                     country!="ESwatini"&
+                     country!="Jordan"&
+                     country!="Madagascar"&
+                     country!="Sao Tome & Principe") %>% 
+ggplot() + 
+  geom_pointrange(aes(x = reorder(country, order), y = vasupp, ymin = vasupp_low, ymax = vasupp_upp, shape = res, color = res))+ 
+  theme_bw() +
+  scale_colour_manual(name = "Residence",
+                      labels = c("Rural", "Urban"),
+                      values = c("#5AAE61", "#9970AB")) +   
+  #scale_shape_manual(name = "Residence",
+   #                  labels = c("Rural", "Urban"),
+    #                 values = c("circle", "triangle")) +
+  scale_shape_discrete("Residence")+
+  coord_flip(ylim = c(0, 100)) +
+  labs(y = "Percentage receiving VAS in prior 6 months",
+       x = "") +
+  scale_y_continuous(breaks = round(seq(min(0), max(100), by = 20),1))+
+  theme(plot.caption = element_text(hjust = 1)) +
+ theme(legend.position = "top")
+```
+
+SEP
+```{r}
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_sep_clean.csv")
+
+vas_cov %>% filter(sep=="Poorest" | sep=="Wealthiest") %>% 
+  filter(country!="Bolivia"&
+                     country!="ESwatini"&
+                     country!="Jordan"&
+                     country!="Madagascar"&
+                     country!="Sao Tome & Principe") %>% 
+ggplot() + 
+  geom_pointrange(aes(x = reorder(country, order), y = vasupp, ymin = vasupp_low, ymax = vasupp_upp, shape = sep, color = sep))+ 
+  theme_bw() +
+    scale_colour_manual(name = "Socioeconomic quintile",
+                      labels = c("Poorest", "Wealthiest"),
+                      values = c("#5AAE61", "#9970AB")) +   
+  #scale_shape_manual(name = "Socioeconomic quintile",
+   #                  labels = c("Poorest", "Wealthiest"),
+    #                 values = c("circle", "triangle")) +
+  scale_shape_discrete("Socioeconomic quintile")+
+  coord_flip(ylim = c(0, 100)) +
+  labs(y = "Percentage receiving VAS in prior 6 months",
+       x = "") +
+  scale_y_continuous(breaks = round(seq(min(0), max(100), by = 20),1))+
+  theme(plot.caption = element_text(hjust = 1)) +
+ theme(legend.position = "top")
+```
+
+Maternal Educational Attainment
+```{r}
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_matedu.csv")
+vas_cov <- merge(x=vas_cov, y=nat_cov, by.x='country', by.y='country', fill=-9999, all.x = TRUE)
+
+vas_cov %>% 
+  filter(country!="Bolivia"&
+                     country!="ESwatini"&
+                     country!="Jordan"&
+                     country!="Madagascar"&
+                     country!="Sao Tome & Principe") %>% 
+ggplot() + 
+  geom_pointrange(aes(x = reorder(country, order), y = vasupp, ymin = vasupp_low, ymax = vasupp_upp, shape = matedu, color = matedu))+ 
+  #geom_point(aes(x = reorder(country, order_nat), y = nat_cov), shape='cross')+
+  theme_bw() +
+  scale_colour_manual(name = "Caregiver educational attainment",
+                      labels = c("None", "Primary", "Secondary+"),
+                      values = c("#5AAE61", "#9970AB", "#D6604D")) +   
+  #scale_shape_manual(name = "Maternal educational attainment",
+   #                  labels = c("None", "Primary", "Secondary+"),
+    #                 values = c("circle", "triangle", "square")) +
+  scale_shape_discrete("Caregiver educational attainment")+
+  coord_flip(ylim = c(0, 100)) +
+  labs(y = "Percentage receiving VAS in prior 6 months",
+       x = "") +
+  scale_y_continuous(breaks = round(seq(min(0), max(100), by = 20),1))+
+  theme(plot.caption = element_text(hjust = 1)) +
+ theme(legend.position = "top")
+```
+
+Breastfeeding adherence
+```{r}
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_bf.csv")
+
+vas_cov %>% filter(country!="Bolivia"&
+                     country!="ESwatini"&
+                     country!="Jordan"&
+                     country!="Madagascar"&
+                     country!="Sao Tome & Principe") %>% 
+ggplot() + 
+  geom_pointrange(aes(x = reorder(country, order), y = vasupp, ymin = vasupp_low, ymax = vasupp_upp, shape = bf_cat))+ 
+  theme_bw() +
+  scale_shape_discrete("")+
+  coord_flip(ylim = c(0, 100)) +
+  labs(y = "Percentage receiving VAS in prior 6 months",
+       x = "") +
+  scale_y_continuous(breaks = round(seq(min(0), max(100), by = 20),1))+
+  theme(plot.caption = element_text(hjust = 1)) +
+ theme(legend.position = "top")
+```
+
+Attitude towards violence
+```{r}
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_att.csv")
+vas_cov$att_cat5 <- as.factor(vas_cov$att_cat5)
+
+vas_cov %>% filter(att_cat5=="1" | att_cat5=="5") %>% 
+  filter(country!="Bolivia"&
+                     country!="ESwatini"&
+                     country!="Jordan"&
+                     country!="Madagascar"&
+                     country!="Sao Tome & Principe") %>% 
+  ggplot() + 
+  geom_pointrange(aes(x = reorder(country, order), y = vasupp, ymin = vasupp_low, ymax = vasupp_upp, shape = att_cat5))+ 
+  theme_bw() +
+  scale_shape_discrete("SWPER quintile: attitude towards violence")+
+  coord_flip(ylim = c(0, 100)) +
+  labs(y = "Percentage receiving VAS in prior 6 months",
+       x = "") +
+  scale_y_continuous(breaks = round(seq(min(0), max(100), by = 20),1))+
+  theme(plot.caption = element_text(hjust = 1)) +
+ theme(legend.position = "top")
+```
+
+Social Independence
+```{r}
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_aut.csv")
+vas_cov$aut_cat5 <- as.factor(vas_cov$aut_cat5)
+
+vas_cov %>% 
+  filter(country!="Bolivia"&
+                     country!="ESwatini"&
+                     country!="Jordan"&
+                     country!="Madagascar"&
+                     country!="Sao Tome & Principe") %>% 
+  ggplot() + 
+  geom_pointrange(aes(x = reorder(country, order), y = vasupp, ymin = vasupp_low, ymax = vasupp_upp, shape = aut_cat5, color = aut_cat5))+ 
+  #geom_point(aes(x = reorder(country, order), y = nat_cov), shape='cross')+
+  theme_bw() +
+      scale_colour_manual(name = "Caregiver social independence",
+                      labels = c("Least", "Most"),
+                      values = c("#5AAE61", "#9970AB")) +   
+  #scale_shape_manual(name = "Caretaker social independence",
+   #                  labels = c("Least", "Most"),
+    #                 values = c("circle", "triangle")) +
+  scale_shape_discrete("Caregiver social independence")+
+  coord_flip(ylim = c(0, 100)) +
+  labs(y = "Percentage receiving VAS in prior 6 months",
+       x = "") +
+  scale_y_continuous(breaks = round(seq(min(0), max(100), by = 20),1))+
+  theme(plot.caption = element_text(hjust = 1)) +
+ theme(legend.position = "top")
+```
+
+Decision Making
+```{r}
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_dec.csv")
+vas_cov$dec_cat5 <- as.factor(vas_cov$dec_cat5)
+
+vas_cov %>% filter(dec_cat5=="Least" | dec_cat5=="Most") %>% 
+    filter(country!="Bolivia"&
+                     country!="ESwatini"&
+                     country!="Jordan"&
+                     country!="Madagascar"&
+                     country!="Sao Tome & Principe") %>% 
+  ggplot() + 
+  geom_pointrange(aes(x = reorder(country, order), y = vasupp, ymin = vasupp_low, ymax = vasupp_upp, shape = dec_cat5, color = dec_cat5))+ 
+  theme_bw() +
+  scale_colour_manual(name = "Caregiver decision making autonomy",
+                      labels = c("Least", "Most"),
+                      values = c("#5AAE61", "#9970AB")) +   
+  #scale_shape_manual(name = "Caretaker decision making autonomy",
+   #                  labels = c("Least", "Most"),
+    #                 values = c("circle", "triangle")) +
+  scale_shape_discrete("Caregiver decision making autonomy")+
+  coord_flip(ylim = c(0, 100)) +
+  labs(y = "Percentage receiving VAS in prior 6 months",
+       x = "") +
+  scale_y_continuous(breaks = round(seq(min(0), max(100), by = 20),1))+
+  theme(plot.caption = element_text(hjust = 1)) +
+ theme(legend.position = "top")
+```
+
+Age
+```{r}
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_age.csv")
+
+vas_cov %>% 
+    filter(country!="Bolivia"&
+                     country!="ESwatini"&
+                     country!="Jordan"&
+                     country!="Madagascar"&
+                     country!="Sao Tome & Principe") %>% 
+  ggplot() + 
+  geom_pointrange(aes(x = reorder(country, order), y = vasupp, ymin = vasupp_low, ymax = vasupp_upp, shape = age_cat))+ 
+  theme_bw() +
+  scale_shape_discrete("Age (months)")+
+  coord_flip(ylim = c(0, 100)) +
+  labs(y = "Percentage receiving VAS in prior 6 months",
+       x = "") +
+  scale_y_continuous(breaks = round(seq(min(0), max(100), by = 20),1))+
+  theme(plot.caption = element_text(hjust = 1)) +
+ theme(legend.position = "top")
+```
+
+Uncertainty
+```{r}
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_hist/vas_uncertainty.csv")
+
+vas_cov <- vas_cov %>% mutate(vasupp = ifelse(vasupp=="reported by mother", "Reported by mother", "Presented vaccination card"))
+vas_cov %>% 
+    filter(country!="Bolivia"&
+                     country!="ESwatini"&
+                     country!="Angola"&
+                     country!="Jordan"&
+                     country!="Madagascar"&
+                     country!="Sao Tome & Principe") %>% 
+ggplot(aes(x = reorder(country, order), y = vas, fill = vasupp)) +
+  geom_col()+
+  theme_bw() +
+  scale_fill_grey(start=0.8, end=0.2)+
+  coord_flip()+
+  labs(y = "Percentage of VAS-positive responses",
+       x = "") +
+  theme(legend.position = "top") 
+```
+
+Region
+```{r}
+vas_cov <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/vas_6_region_2.csv")
+
+b <- vas_cov %>% 
+ggplot() + 
+  geom_pointrange(aes(x = reorder(country, order), y = vasupp, ymin = vasupp_low, ymax = vasupp_upp, shape = region_cat, color = region_cat))+
+  theme_bw() +
+   scale_colour_manual(name = "Administrative region",
+                      #labels = c("With lowest coverage", "With highest coverage"),
+                      values = c("#9970AB", "#5AAE61")) +   
+  scale_shape_manual(name = "Administrative region",
+                     #labels = c("With lowest coverage", "With highest coverage"),
+                     values = c(19, 17)) +
+  scale_shape_discrete("Administrative region")+
+  coord_flip(ylim = c(0, 100)) +
+  labs(y = "Percentage receiving VAS in prior 6 months",
+       x = "") +
+  scale_y_continuous(breaks = round(seq(min(0), max(100), by = 20),1))+
+  theme(plot.caption = element_text(hjust = 1)) +
+ theme(legend.position = "top")
+```

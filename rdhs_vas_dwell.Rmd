@@ -1,0 +1,162 @@
+---
+title: "Untitled"
+author: "Kevin Tang"
+date: "10/2/2021"
+output: html_document
+---
+
+
+Dwelling Index
+```{r}
+data <- ir$LB2019DHS
+
+#floor
+data <- data %>% mutate(floor = as.numeric(case_when(v127=="natural" ~ -1,
+                                          v127=="earth / sand" ~ -1,
+                                          v127=="earth/sand" ~ -1,
+                                          v127=="earth, sand" ~ -1,
+                                          v127=="dung" ~ -1,
+                                          v127=="rudimentary" ~ -1,
+                                          v127=="wood planks" ~ 1,
+                                          v127=="palm / bamboo" ~ 1,
+                                          v127=="palm/bamboo" ~ 1,
+                                          v127=="palm, bamboo" ~ 1,
+                                          v127=="wood" ~ 1,
+                                          v127=="vinyl, asphalt strips" ~ 1,
+                                          v127=="vinyl/ linoleum/ tapeh" ~ 1,
+                                          v127=="vinyl or asphalt strips" ~ 1,
+                                          v127=="parquet or polished wood" ~ 1,
+                                          v127=="parquet, polished wood" ~ 1,
+                                          v127=="ceramic tiles" ~ 1.14,
+                                          v127=="tiles" ~ 1.14,
+                                          v127=="cement" ~ 1.14,
+                                          v127=="cement/ concrete" ~ 1.14,
+                                          v127=="cement/concrete" ~ 1.14,
+                                          v127=="mosaic/ceramic" ~ 1.14,
+                                          v127=="carpet" ~ 1.14,
+                                          v127=="other" ~ 0,
+                                          v127=="not a dejure resident" ~ 0,
+                                          v127=="missing" ~ 0)))
+
+#toilet
+data <- data %>% mutate(toilet = as.numeric(case_when(v116=="flush toilet" ~ 1.14,
+                                          v116=="flush to piped sewer system" ~ 1.14,
+                                          v116=="flush to septic tank" ~ 1.14,
+                                          v116=="flush to pit latrine" ~ 1.14,
+                                          v116=="flush to somewhere else" ~ 1.14,
+                                          v116=="flush, don't know where" ~ 1.14,
+                                          v116=="pit toilet latrine" ~ 1.14,
+                                          v116=="ventilated improved pit latrine (vip)" ~ 0.68,
+                                          v116=="pit latrine with slab" ~ 0.68,
+                                          v116=="pit latrine without slab/open pit" ~ -0.11,
+                                          v116=="no facility" ~ 0,
+                                          v116=="no facility/bush/field" ~ 0,
+                                          v116=="composting toilet" ~ 0.68,
+                                          v116=="bucket toilet" ~ 0.68,
+                                          v116=="hanging toilet/latrine" ~ 0.68,
+                                          v116=="other" ~ 0,
+                                          v116=="not a dejure resident" ~ 0,
+                                          v116=="missing" ~ 0)))
+#wall
+data <- data %>% mutate(wall = as.numeric(case_when(v128=="natural" ~ -0.7,
+                                          v128=="no walls" ~ -0.7,
+                                          v128=="cane / palm / trunks" ~ -0.7,
+                                          v128=="cane/palm/trunks" ~ -0.7,
+                                          v128=="bamboo/cane/palm/trunks" ~ -0.7,
+                                          v128=="dirt" ~ -0.7,
+                                          v128=="rudimentary" ~ -0.7,
+                                          v128=="canvas/tent" ~ -0.7,
+                                          v128=="bamboo with mud" ~ 0.1,
+                                          v128=="mud/ mud bricks" ~ 0.1,
+                                          v128=="pole with mud" ~ 0.1,
+                                          v128=="stone with mud" ~ 0.1,
+                                          v128=="uncovered adobe" ~ 0.1,
+                                          v128=="plywood" ~ 0,
+                                          v128=="cardboard" ~ -0.7,
+                                          v128=="reused wood" ~ 0,
+                                          v128=="reused wood/ pallets" ~ 0,
+                                          v128=="finished" ~ 1.14,
+                                          v128=="cement" ~ 1.14,
+                                          v128=="stone with lime / cement" ~ 1.14,
+                                          v128=="stone with lime/cement" ~ 1.14,
+                                          v128=="bricks" ~ 1.14,
+                                          v128=="cement blocks" ~ 1.14,
+                                          v128=="bamboo with cement" ~ 1.14,
+                                          v128=="ceramic tiles with cement" ~ 1.14,
+                                          v128=="mud blocks plastered with cement" ~ 1.14,
+                                          v128=="covered adobe" ~ 1.14,
+                                          v128=="wood planks / shingles" ~ 1.14,
+                                          v128=="wood planks/shingles" ~ 1.14,
+                                          v128=="other" ~ 0,
+                                          v128=="not a dejure resident" ~ 0,
+                                          v128=="missing" ~ 0)))
+#roof
+data <- data %>% mutate(roof = as.numeric(case_when(v129=="natural" ~ -0.75,
+                                          v129=="no roof" ~ -0.75,
+                                          v129=="thatch/palm leaf" ~ -0.75,
+                                          v129=="thatch / palm leaf" ~ -0.75,
+                                          v129=="clods of earth" ~ -0.75,
+                                          v129=="thatch/mud" ~ -0.75,
+                                          v129=="sod" ~ -0.75,
+                                          v129=="rudimentary" ~ -0.75,
+                                          v129=="canvas/tent" ~ -0.75,
+                                          v129=="rustic mat" ~ -0.75,
+                                          v129=="palm/bamboo" ~ -0.75,
+                                          v129=="palm / bamboo" ~ -0.75,
+                                          v129=="wood planks" ~ -0.75,
+                                          v129=="cardboard" ~ -0.75,
+                                          v129=="finished" ~ 0,
+                                          v129=="metal" ~ 0,
+                                          v129=="mat" ~ 0,
+                                          v129=="metal/ corrugated iron" ~ 0,
+                                          v129=="metal corrugate" ~ 0,
+                                          v129=="wood" ~ 0,
+                                          v129=="calamine/cement fiber" ~ 0.5,
+                                          v129=="zinc / cement fiber" ~ 0.5,
+                                          v129=="ceramic tiles" ~ 0.5,
+                                          v129=="cement" ~ 0.5,
+                                          v129=="cement/ concrete" ~ 0.5,
+                                          v129=="roofing shingles" ~ 0.5,
+                                          v129=="decra" ~ 0.5,
+                                          v129=="tiles/slate" ~ 0.5,
+                                          v129=="zinc/cement fiber" ~ 0.5,
+                                          v129=="other" ~ 0,
+                                          v129=="not a dejure resident" ~ 0,
+                                          v129=="missing" ~ 0)))
+#electric
+data <- data %>% mutate(electric = as.numeric(case_when(v119=="yes" ~ 0.78,
+                                          v119=="no" ~ 0,
+                                          v119=="not a dejure resident" ~ 0,
+                                          v119=="missing" ~ 0)))
+
+#water
+data <- data %>% mutate(water = if_else(str_detect(v113, "^(pipe)"), 0.78, 0))
+
+data %>% select(v116, toilet) %>% filter(is.na(toilet))
+data %>% select(v119, electric) %>% filter(is.na(electric))
+data %>% select(v129, roof) %>% filter(is.na(roof))
+data %>% select(v128, wall) %>% filter(is.na(wall))
+data %>% select(v127, floor) %>% filter(is.na(floor))
+data %>% select(v113, water) %>% filter(is.na(water))
+
+data <- data %>% mutate(dwell=floor+toilet+wall+roof+electric+water) %>% mutate(dwell_cat=ntile(dwell, 5)) %>% select(caseid, dwell_cat)
+
+write.csv(data, "/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/dwelling/LB2019DHS.csv", 
+          row.names=FALSE)
+```
+
+```{r}
+dwell <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/dwelling/BU2016DHS.csv")
+data <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/dhs/BU2016DHS.csv")
+data <- merge(x=data, y=dwell, by.x='caseid', by.y='caseid', fill=-9999, all.x = TRUE)
+
+w_data <- data %>% as_survey_design(id = cluster, strata =NULL, weights = weight, nest=T)
+
+w_data %>%
+  filter(!is.na(dwell_cat)) %>% 
+  srvyr::group_by(dwell_cat) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vas_6 == "yes", proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+```
+

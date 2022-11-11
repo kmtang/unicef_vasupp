@@ -1,0 +1,79 @@
+---
+title: "Untitled"
+author: "Kevin Tang"
+date: "1/19/2022"
+output: html_document
+---
+
+```{r}
+library(sf)
+library(tmap)
+library(tmaptools)
+library(leaflet)
+library(dplyr)
+library(reshape2)
+library(cowplot)
+library(RColorBrewer)
+library(tidyverse)
+```
+
+Checking the Shapefile Regions
+```{r}
+shp <- st_read("/Users/kevintang/Desktop/region_shp/gadm36_ZWE_shp/gadm36_ZWE_1.shp")
+
+```
+
+Building the Map
+```{r}
+colors.map = c("0% - 9%"="snow",
+               "10% - 19%"="#FFFFD9", 
+               "20% - 29%"="#EDF8B1", 
+               '30% - 39%'="#C7E9B4", 
+               '40% - 49%'="#7FCDBB", 
+               '50% - 59%'="#41B6C4",
+               "60% - 69%"="#1D91C0", 
+               "70% - 79%"="#225EA8", 
+               '80% - 89%'="#253494", 
+               '90% - 100'="#081D58")
+
+legend <- get_legend(ggplot(data = map) +
+  geom_sf(aes(fill = vas_cat)) +
+  theme_void() +
+  scale_fill_manual(name="VAS Coverage",  values = c(colors.map)))
+
+
+shp <- st_read("/Users/kevintang/Desktop/region_shp/gadm36_ETH_shp/gadm36_ETH_1.shp")
+vas <- read.csv("/Users/kevintang/Library/Mobile Documents/com~apple~CloudDocs/Documents/r_projects/unicef_vasupp/data/vas_6/regions/ET2016DHS.csv")
+vas <- vas %>% 
+  mutate(vas_cat = case_when(
+                            vasupp < 10 ~ "0% - 9%",
+                            vasupp >= 10 & vasupp < 20 ~ "10% - 19%",
+                            vasupp >= 20 & vasupp < 30 ~ "20% - 29%",
+                            vasupp >= 30 & vasupp < 40 ~ "30% - 39%",
+                            vasupp >= 40 & vasupp < 50 ~ "40% - 49%",
+                            vasupp >= 50 & vasupp < 60 ~ "50% - 59%",
+                            vasupp >= 60 & vasupp < 70 ~ "60% - 69%",
+                            vasupp >= 70 & vasupp < 80 ~ "70% - 79%",
+                            vasupp >= 80 & vasupp < 90 ~ "80% - 89%",
+                            vasupp >= 90 ~ "90% - 100%"))
+
+map <- merge(x=shp, y=vas, by.x='GID_1', by.y='GID_1', fill=-9999, all.x = TRUE)
+
+ET <- map %>% ggplot(data = .) +
+  geom_sf(aes(fill = vas_cat)) +
+  theme_void() +
+  scale_fill_manual(name="VAS Coverage",  values = c(colors.map)) +
+  theme(legend.position="none") +
+  labs(title = 'Ethiopia, 2016')
+  
+```
+
+```{r}
+a <- plot_grid(TD, IA, ncol = 2)
+b <- plot_grid(NG, ET, ncol = 2)
+c <- plot_grid(YE, legend, ncol = 2)
+
+plot_grid(a, b, c, ncol = 1)
+plot_grid(a, b, ncol = 2, labels=LETTERS[1:2])
+```
+

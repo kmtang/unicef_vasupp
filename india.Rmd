@@ -1,0 +1,328 @@
+---
+title: "Untitled"
+author: "Kevin Tang"
+date: "9/18/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(rdhs)
+
+devtools::install_github("mrc-ide/demogsurv")
+library(demogsurv)
+library(data.table)
+library(haven)
+pacman::p_load(rio,tidyverse,survey,srvyr,gtsummary)
+library(tidyverse)
+library(plyr)
+options(stringsAsFactors = TRUE)
+```
+
+```{r}
+library(foreign)
+data_full <- read.dta("/Users/kevintang/Desktop/IAIR74DT/IAIR74FL.DTA")
+data <- data_full %>% select(caseid,
+                v001,v005, #survey weights
+                h33_1,h33_2,h33_3,h33_4,h33_5,h33_6,#vas
+                h34_1,h34_2,h34_3,h34_4,h34_5,h34_6,#vas
+                b8_01,b8_02,b8_03,b8_04,b8_05,b8_06, #age
+                v414g,v414h,v414i,v414j,v414k,v414l,v414m,v414n, #food consumption
+                h4_1,h4_2,h4_3,h4_4,h4_5,h4_6, #polio
+                h3_1,h3_2,h3_3,h3_4,h3_5,h3_6, #dtp1
+                h7_1,h7_2,h7_3,h7_4,h7_5,h7_6, #dtp3
+                h9_1,h9_2,h9_3,h9_4,h9_5,h9_6, #measles 
+                m4_1,m4_2,m4_3,m4_4,m4_5,m4_6, #breastfeeding
+                v744a,v744b,v744c,v744d,v744e,v157,v133,v212,v511, #womens empowerment
+                v743a,v743b,v743d,v731,v715,v730,v501,v012, #womens empowerment
+                v106, #matedu
+                v102, #urban/rural
+                v024, #region
+                v190 #socioeconomic quintile
+                )
+```
+
+```{r}
+c1 <- data %>% dplyr::select(caseid,v001,v005, b8_01, h33_1,h4_1,h3_1,h9_1,m4_1,v106,v102,v190)
+c2 <- data %>% dplyr::select(caseid,v001,v005, b8_02, h33_2,h4_2,h3_2,h9_2,m4_2,v106,v102,v190)
+c3 <- data %>% dplyr::select(caseid,v001,v005, b8_03, h33_3,h4_3,h3_3,h9_3,m4_3,v106,v102,v190)
+c4 <- data %>% dplyr::select(caseid,v001,v005, b8_04, h33_4,h4_4,h3_4,h9_4,m4_4,v106,v102,v190)
+c5 <- data %>% dplyr::select(caseid,v001,v005, b8_05, h33_5,h4_5,h3_5,h9_5,m4_5,v106,v102,v190)
+c6 <- data %>% dplyr::select(caseid,v001,v005, b8_06, h33_6,h4_6,h3_6,h9_6,m4_6,v106,v102,v190)
+
+names(c1) <- c('caseid',"cluster", "weight",'age', 'vas',"polio", "dtp1", "mea","bf","matedu","res","sep")
+names(c2) <- c('caseid',"cluster", "weight",'age', 'vas',"polio", "dtp1", "mea","bf","matedu","res","sep")
+names(c3) <- c('caseid',"cluster", "weight",'age', 'vas',"polio", "dtp1", "mea","bf","matedu","res","sep")
+names(c4) <- c('caseid',"cluster", "weight",'age', 'vas',"polio", "dtp1", "mea","bf","matedu","res","sep")
+names(c5) <- c('caseid',"cluster", "weight",'age', 'vas',"polio", "dtp1", "mea","bf","matedu","res","sep")
+names(c6) <- c('caseid',"cluster", "weight",'age', 'vas',"polio", "dtp1", "mea","bf","matedu","res","sep")
+
+data <- rbind(c1,c2,c3,c4,c5,c6)
+data <- data %>% filter(age<5)
+```
+
+```{r}
+#Recategorise outcome variable
+data <- data %>% mutate(vasupp = case_when(vas=="vaccination date on card" ~ 1,
+                                           vas=="reported by mother" ~ 1,
+                                           vas=="vaccination marked on card" ~ 1,
+                                           vas=="no" ~ 2))
+```
+
+```{r}
+#Recategorise outcome variable
+data <- data %>% mutate(dtp1_cat = case_when(dtp1=="vaccination date on card" ~ "yes",
+                                           dtp1=="reported by mother" ~ "yes",
+                                           dtp1=="vaccination marked on card" ~ "yes",
+                                           dtp1=="no" ~ "no"))
+```
+
+```{r}
+#Recategorise outcome variable
+data <- data %>% mutate(mea_cat = case_when(mea=="vaccination date on card" ~ "yes",
+                                           mea=="reported by mother" ~ "yes",
+                                           mea=="vaccination marked on card" ~ "yes",
+                                           mea=="no" ~ "no"))
+```
+
+```{r}
+#Recategorise outcome variable
+data <- data %>% mutate(polio_cat = case_when(polio=="vaccination date on card" ~ "yes",
+                                           polio=="reported by mother" ~ "yes",
+                                           polio=="vaccination marked on card" ~ "yes",
+                                           polio=="no" ~ "no"))
+```
+
+```{r}
+#Recategorise outcome variable
+data <- data %>% mutate(matedu_cat = case_when(matedu=="no education" ~ "no education",
+                                           matedu=="primary" ~ "primary",
+                                           matedu=="secondary" ~ "secondary+",
+                                           matedu=="higher" ~ "secondary+"))
+```
+
+```{r}
+#Recatagorize exposure
+data <- data %>% mutate(res = case_when(res=="urban" ~ "Urban",
+                                           res=="rural" ~ "Rural"))
+```
+
+```{r}
+data <- data %>%filter(!is.na(v414i))
+
+#Recategorise outcome variable
+data <- data %>% mutate(vafood = ifelse(v414g=="yes" |
+                                   v414h=="yes" |
+                                   v414i=="yes" |
+                                   v414j=="yes" |
+                                   v414k=="yes" |
+                                   v414l=="yes" |
+                                   v414m=="yes" |
+                                   v414n=="yes", 1, 0)) 
+
+data <- data %>% mutate(vasupp = case_when(h33_1=="vaccination date on card" ~ 1,
+                                           h33_1=="reported by mother" ~ 1,
+                                           h33_1=="vaccination marked on card" ~ 1,
+                                           h33_1=="no" ~ 2))
+```
+
+```{r}
+#Recategorise outcome variable
+data <- data %>% mutate(age_cat = as.factor(case_when(age==0 ~ 1,
+                                           age==1|age==2 ~ 2,
+                                           age==3|age==4  ~ 3)))
+```
+
+SWPER
+```{r}
+data <- data %>% mutate(union = if_else(v501=="married", 1, 2)) %>% filter(union==1)
+
+data$v744a[data$v744a=="missing"] <- NA
+data$v744b[data$v744b=="missing"] <- NA
+data$v744c[data$v744c=="missing"] <- NA
+data$v744d[data$v744d=="missing"] <- NA
+data$v744e[data$v744e=="missing"] <- NA
+data$v731[data$v731=="missing"] <- NA
+data$v743a[data$v743a=="missing"] <- NA
+data$v743b[data$v743b=="missing"] <- NA
+data$v743d[data$v743d=="missing"] <- NA
+data$v157[data$v157=="missing"] <- NA
+data$v133[data$v133=="missing"] <- NA
+data$v715[data$v715=="missing"] <- NA
+data$v730[data$v730=="missing"] <- NA
+
+data <- data %>% mutate(beat1 = as.numeric(case_when(v744a=="yes" ~ -1,
+                                          v744a=="no" ~ 1,
+                                          v744a=="don't know" ~ 0)))
+data <- data %>% mutate(beat2 = as.numeric(case_when(v744b=="yes" ~ -1,
+                                          v744b=="no" ~ 1,
+                                          v744b=="don't know" ~ 0)))
+data <- data %>% mutate(beat3 = as.numeric(case_when(v744c=="yes" ~ -1,
+                                          v744c=="no" ~ 1,
+                                          v744c=="don't know" ~ 0)))
+data <- data %>% mutate(beat4 = as.numeric(case_when(v744d=="yes" ~ -1,
+                                          v744d=="no" ~ 1,
+                                          v744d=="don't know" ~ 0)))
+data <- data %>% mutate(beat5 = as.numeric(case_when(v744e=="yes" ~ -1,
+                                          v744e=="no" ~ 1,
+                                          v744e=="don't know" ~ 0)))
+
+data <- data %>% mutate(decide1 = as.numeric(case_when(v743a=="husband/partner alone"|v744a=="other" ~ -1,
+                                            v743a=="respondent and husband/partner"|v743a=="respondent and other person"~ 0,
+                                            v743a=="respondent alone" ~ 1)))
+
+data <- data %>% mutate(decide2 = as.numeric(case_when(v743b=="husband/partner alone"|v744b=="other" ~ -1,
+                                            v743b=="respondent and husband/partner"|v743b=="respondent and other person"~ 0,
+                                            v743b=="respondent alone" ~ 1)))
+
+data <- data %>% mutate(decide3 = as.numeric(case_when(v743d=="husband/partner alone"|v744d=="other" ~ -1,
+                                            v743d=="respondent and husband/partner"|v743d=="respondent and other person"~ 0,
+                                            v743d=="respondent alone" ~ 1)))
+data <- data %>% mutate(educ = as.numeric(v133))
+
+data <- data %>% mutate(work = as.numeric(case_when(v731=="no"~ 0,
+                                         v731=="in the past year"~ 1,
+                                         v731=="currently working" | v731=="have a job, but on leave last 7 days" ~ 2)))
+
+data <- data %>% mutate(read = as.numeric(case_when(v157=="not at all"~ 0,
+                                         v157=="less than once a week"~ 1,
+                                         v157=="at least once a week" | v157=="almost every day" ~ 2)))
+
+data <- data %>% mutate(age1cohab = as.numeric(v511))
+
+age1 <- data %>% mutate(age1birth = v212) %>% select(age1birth, v511, educ, work, read) 
+v212_i <- imputation(imethod = "hotdeck", age1, Attribute = 1, Missing = NA, Value = 1)
+v212_i <- v212_i %>% select(-v511, -educ, -work, -read)
+data <- cbind(data,v212_i)
+
+data$v715[data$v715=="don't know"] <- NA
+data <- data %>% mutate(husb_educ = as.numeric(v715))
+
+
+data <- data %>% mutate(educ_diff = as.numeric(husb_educ) - as.numeric(educ))
+
+data<-data %>% mutate(husb_age = as.numeric(v730))
+data<-data %>% mutate(age_diff = as.numeric(v012) - husb_age)
+
+data$beat1[is.na(data$beat1)] <- 0
+data$beat2[is.na(data$beat2)] <- 0
+data$beat3[is.na(data$beat3)] <- 0
+data$beat4[is.na(data$beat4)] <- 0
+data$beat5[is.na(data$beat5)] <- 0
+data$decide1[is.na(data$decide1)] <- 0
+data$decide2[is.na(data$decide2)] <- 0
+data$decide3[is.na(data$decide3)] <- 0
+data$educ[is.na(data$educ)] <- 0
+data$work[is.na(data$work)] <- 0
+data$read[is.na(data$read)] <- 0
+data$decide1[is.na(data$decide1)] <- 0
+data$educ_diff[is.na(data$educ_diff)] <- 0
+data$age_diff[is.na(data$age_diff)] <- 0
+
+data <- data %>% mutate(att_score= ((-0.950)+
+                              (0.489*beat1)+
+                              (0.493*beat2)+
+                              (0.501*beat3)+
+                              (0.493*beat4)+
+                              (0.546*beat5)+
+                              (0.056*read)+
+                              (0.015*educ)+
+                              (-0.008*age1birth)+
+                              (-0.004*age1cohab)+
+                              (0.002*age_diff)+
+                              (-0.004*educ_diff)+
+                              (0.008*decide1)+
+                              (-0.034*decide2)+
+                              (0.008*decide3)+
+                              (-0.001*work))/1.818)
+data <- data %>% mutate(aut_score=((-5.360)+
+                             (-0.006*beat1)+
+                             (-0.020*beat2)+
+                             (0.000*beat3)+
+                             (0.000*beat4)+
+                             (-0.003*beat5)+
+                             (0.549*read)+
+                             (0.09*educ)+
+                             (0.141*age1birth)+
+                             (0.131*age1cohab)+
+                             (0.026*age_diff)+
+                             (0.050*educ_diff)+
+                             (0.004*decide1)+
+                             (-0.013*decide2)+
+                             (-0.052*decide3)+
+                             (-0.060*work))/1.475)
+
+data <- data %>% mutate(dec_score=((0.857)+
+                             (-0.001*beat1)+
+                             (-0.040*beat2)+
+                             (0.007*beat3)+
+                             (0.026*beat4)+
+                             (-0.014*beat5)+
+                             (0.150*read)+
+                             (0.026*educ)+
+                             (-0.019*age1birth)+
+                             (-0.006*age1cohab)+
+                             (0.012*age_diff)+
+                             (-0.009*educ_diff)+
+                             (0.770*decide1)+
+                             (0.831*decide2)+
+                             (0.768*decide3)+
+                             (0.180*work))/1.417)
+
+data <- data  %>% mutate(att_cat3 = ntile(att_score, 3))
+data <- data  %>% mutate(aut_cat3 = ntile(aut_score, 3))
+data <- data  %>% mutate(dec_cat3 = ntile(dec_score, 3))
+
+data <- data  %>% mutate(att_cat5 = ntile(att_score, 5))
+data <- data  %>% mutate(aut_cat5 = ntile(aut_score, 5))
+data <- data  %>% mutate(dec_cat5 = ntile(dec_score, 5))
+```
+
+```{r}
+#Adjust for DHS weights
+w_data <- data %>% as_survey_design(id = cluster, strata =NULL, weights = weight, nest=T)
+
+#Calculate stratified coverage and 95%CI limits 
+IN <- w_data %>%
+  filter(!is.na(res)) %>% 
+  srvyr::group_by(res) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vasupp== 1, proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+IN$country <- "India"
+
+table <- table(data$h33_1, data$vafood)
+table
+prop.table(table, 2)
+```
+
+```{r}
+#Adjust for DHS weights
+w_data <- data %>% as_survey_design(id = cluster, strata =NULL, weights = weight, nest=T)
+
+#Calculate stratified coverage and 95%CI limits 
+IN_att<- w_data %>%
+  filter(!is.na(att_cat5)) %>% 
+  srvyr::group_by(att_cat5) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vasupp == 1, proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+IN_aut<- w_data %>%
+  filter(!is.na(aut_cat5)) %>% 
+  srvyr::group_by(aut_cat5) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vasupp == 1, proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+IN_dec<- w_data %>%
+  filter(!is.na(dec_cat5)) %>% 
+  srvyr::group_by(dec_cat5) %>%
+  srvyr::summarise(
+    vasupp = (survey_mean(vasupp == 1, proportion = TRUE, vartype = "ci",na.rm = T)) * 100)
+
+IN_att$country <- "India"
+IN_aut$country <- "India"
+IN_dec$country <- "India"
+```
